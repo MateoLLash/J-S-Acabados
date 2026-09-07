@@ -1,0 +1,43 @@
+2026-09-07 10:51:34,008 [INFO] Scrapeando https://marketceramico.com/tienda/
+2026-09-07 10:51:35,804 [INFO] Resumen scraping: {'competidor': 'Market Cerámico', 'paginas_recorridas': 1, 'nuevos': 0, 'actualizados': 0, 'sin_cambio': 0}
+2026-09-07 10:51:35,804 [INFO] OK -> {'competidor': 'Market Cerámico', 'paginas_recorridas': 1, 'nuevos': 0, 'actualizados': 0, 'sin_cambio': 0}
+2026-09-07 10:52:51,635 [INFO] Scrapeando https://marketceramico.com/tienda/
+2026-09-07 10:52:52,592 [INFO] Resumen scraping: {'competidor': 'Market Cerámico', 'paginas_recorridas': 1, 'nuevos': 0, 'actualizados': 0, 'sin_cambio': 0}
+2026-09-07 10:52:52,592 [INFO] OK -> {'competidor': 'Market Cerámico', 'paginas_recorridas': 1, 'nuevos': 0, 'actualizados': 0, 'sin_cambio': 0}
+2026-09-07 11:04:13,926 [INFO] Scrapeando https://marketceramico.com/tienda/
+2026-09-07 11:04:14,894 [INFO] Resumen scraping: {'competidor': 'Market Cerámico', 'paginas_recorridas': 1, 'nuevos': 0, 'actualizados': 0, 'sin_cambio': 0}
+2026-09-07 11:04:14,894 [INFO] OK -> {'competidor': 'Market Cerámico', 'paginas_recorridas': 1, 'nuevos': 0, 'actualizados': 0, 'sin_cambio': 0}
+2026-09-07 11:04:26,430 [INFO] Scrapeando https://marketceramico.com/tienda/
+2026-09-07 11:04:27,164 [INFO] 15 productos detectados en https://marketceramico.com/tienda/ (método: fallback (enlaces de carrito))
+2026-09-07 11:04:36,791 [INFO] Scrapeando https://marketceramico.com/tienda/page/2/
+2026-09-07 11:04:38,462 [INFO] 10 productos detectados en https://marketceramico.com/tienda/page/2/ (método: fallback (enlaces de carrito))
+2026-09-07 11:04:45,776 [INFO] Scrapeando https://marketceramico.com/tienda/page/3/
+2026-09-07 11:04:47,681 [INFO] 15 productos detectados en https://marketceramico.com/tienda/page/3/ (método: fallback (enlaces de carrito))
+2026-09-07 11:04:57,275 [INFO] Scrapeando https://marketceramico.com/tienda/page/4/
+2026-09-07 11:04:59,466 [INFO] 15 productos detectados en https://marketceramico.com/tienda/page/4/ (método: fallback (enlaces de carrito))
+2026-09-07 11:05:08,999 [INFO] Scrapeando https://marketceramico.com/tienda/page/5/
+2026-09-07 11:05:10,994 [INFO] 15 productos detectados en https://marketceramico.com/tienda/page/5/ (método: fallback (enlaces de carrito))
+2026-09-07 11:05:20,527 [INFO] Scrapeando https://marketceramico.com/tienda/page/6/
+2026-09-07 11:05:22,709 [INFO] 15 productos detectados en https://marketceramico.com/tienda/page/6/ (método: fallback (enlaces de carrito))
+2026-09-07 11:05:32,391 [INFO] Scrapeando https://marketceramico.com/tienda/page/7/
+2026-09-07 11:05:34,319 [INFO] 15 productos detectados en https://marketceramico.com/tienda/page/7/ (método: fallback (enlaces de carrito))
+2026-09-07 11:05:43,801 [INFO] Scrapeando https://marketceramico.com/tienda/page/8/
+2026-09-07 11:05:45,854 [INFO] 15 productos detectados en https://marketceramico.com/tienda/page/8/ (método: fallback (enlaces de carrito))
+2026-09-07 11:05:55,476 [INFO] Scrapeando https://marketceramico.com/tienda/page/9/
+2026-09-07 11:05:57,364 [INFO] 15 productos detectados en https://marketceramico.com/tienda/page/9/ (método: fallback (enlaces de carrito))
+2026-09-07 11:06:06,944 [INFO] Scrapeando https://marketceramico.com/tienda/page/10/
+2026-09-07 11:06:08,707 [INFO] 15 productos detectados en https://marketceramico.com/tienda/page/10/ (método: fallback (enlaces de carrito))
+2026-09-07 11:06:18,272 [INFO] Scrapeando https://marketceramico.com/tienda/page/11/
+2026-09-07 11:06:20,221 [INFO] 14 productos detectados en https://marketceramico.com/tienda/page/11/ (método: fallback (enlaces de carrito))
+2026-09-07 11:06:29,339 [INFO] Scrapeando https://marketceramico.com/tienda/page/12/
+2026-09-07 11:06:31,433 [INFO] 7 productos detectados en https://marketceramico.com/tienda/page/12/ (método: fallback (enlaces de carrito))
+2026-09-07 11:06:37,485 [INFO] Scrapeando https://marketceramico.com/tienda/page/13/
+2026-09-07 11:06:39,347 [INFO] 15 productos detectados en https://marketceramico.com/tienda/page/13/ (método: fallback (enlaces de carrito))
+2026-09-07 11:06:48,869 [INFO] Scrapeando https://marketceramico.com/tienda/page/14/
+2026-09-07 11:06:50,333 [INFO] 15 productos detectados en https://marketceramico.com/tienda/page/14/ (método: fallback (enlaces de carrito))
+2026-09-07 11:06:59,880 [INFO] Scrapeando https://marketceramico.com/tienda/page/15/
+2026-09-07 11:07:01,671 [INFO] 11 productos detectados en https://marketceramico.com/tienda/page/15/ (método: fallback (enlaces de carrito))
+2026-09-07 11:07:09,467 [INFO] Scrapeando https://marketceramico.com/tienda/page/16/
+2026-09-07 11:07:11,472 [INFO] 4 productos detectados en https://marketceramico.com/tienda/page/16/ (método: fallback (enlaces de carrito))
+2026-09-07 11:07:13,757 [INFO] Resumen scraping: {'competidor': 'Market Cerámico', 'paginas_recorridas': 16, 'nuevos': 211, 'actualizados': 0, 'sin_cambio': 0}
+2026-09-07 11:07:13,758 [INFO] OK -> {'competidor': 'Market Cerámico', 'paginas_recorridas': 16, 'nuevos': 211, 'actualizados': 0, 'sin_cambio': 0}

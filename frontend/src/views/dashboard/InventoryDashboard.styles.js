@@ -1,0 +1,358 @@
+export const styles = {
+  container: {
+    display: 'flex',
+    width: '100vw',
+    height: '100vh',
+    backgroundColor: '#f8fafc',
+    fontFamily: "'Segoe UI', Roboto, sans-serif",
+    margin: 0,
+    padding: 0,
+    boxSizing: 'border-box',
+    overflow: 'hidden',
+  },
+  
+  /* BARRA LATERAL (FIXED LEFT) */
+  sidebar: {
+    width: '260px',
+    minWidth: '260px',
+    backgroundColor: '#0f172a',
+    color: '#ffffff',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    padding: '24px 16px',
+    boxSizing: 'border-box',
+    height: '100%',
+  },
+  brandSection: {
+    padding: '0 8px 20px 8px',
+  },
+  brandTitle: {
+    fontSize: '16px',
+    fontWeight: '700',
+    margin: 0,
+    color: '#ffffff',
+  },
+  brandSubtitle: {
+    fontSize: '12px',
+    color: '#94a3b8',
+    margin: '2px 0 0 0',
+  },
+  menuList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+    flex: 1,
+    marginTop: '10px',
+  },
+  menuItem: (isActive) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '12px 16px',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: isActive ? '600' : '400',
+    backgroundColor: isActive ? '#1e293b' : 'transparent',
+    color: isActive ? '#f97316' : '#94a3b8', // Naranja para el elemento activo
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    textDecoration: 'none',
+  }),
+  logoutItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '12px 16px',
+    color: '#94a3b8',
+    cursor: 'pointer',
+    fontSize: '14px',
+    borderTop: '1px solid #334155',
+    paddingTop: '20px',
+  },
+
+  /* CONTENIDO PRINCIPAL SCROLLABLE */
+  mainContent: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    overflow: 'hidden',
+  },
+  
+  /* TOPBAR DE BÚSQUEDA Y USUARIO */
+  topbar: {
+    height: '70px',
+    backgroundColor: '#ffffff',
+    borderBottom: '1px solid #e2e8f0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '0 32px',
+    boxSizing: 'border-box',
+  },
+  searchWrapper: {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    width: '360px',
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: '14px',
+    color: '#94a3b8',
+  },
+  searchInput: {
+    width: '100%',
+    padding: '10px 14px 10px 42px',
+    borderRadius: '99px',
+    border: '1px solid #e2e8f0',
+    backgroundColor: '#f8fafc',
+    fontSize: '14px',
+    outline: 'none',
+  },
+  topbarRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '20px',
+  },
+  alertBadge: {
+    backgroundColor: '#fff7ed',
+    border: '1px solid #ffedd5',
+    padding: '6px 12px',
+    borderRadius: '99px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    color: '#ea580c',
+    fontSize: '12px',
+    fontWeight: '600',
+  },
+  userProfile: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  avatar: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    backgroundColor: '#0f172a',
+    color: '#ffffff',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    fontWeight: 'bold',
+    fontSize: '14px',
+  },
+  userData: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  userName: {
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#0f172a',
+    margin: 0,
+  },
+  userRole: {
+    fontSize: '11px',
+    color: '#64748b',
+    margin: 0,
+  },
+
+  /* CONTENEDOR INTERNO CON SCROLL */
+  scrollArea: {
+    flex: 1,
+    padding: '32px',
+    overflowY: 'auto',
+    boxSizing: 'border-box',
+  },
+  pageHeader: {
+    marginBottom: '24px',
+  },
+  pageTitle: {
+    fontSize: '24px',
+    fontWeight: '700',
+    color: '#0f172a',
+    margin: 0,
+  },
+  pageSubtitle: {
+    fontSize: '13px',
+    color: '#64748b',
+    margin: '4px 0 0 0',
+  },
+
+  /* CUADRÍCULA DE TARJETAS METRICAS */
+  metricsGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: '20px',
+    marginBottom: '24px',
+  },
+  metricCard: {
+    backgroundColor: '#ffffff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    padding: '20px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  metricMeta: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  metricTitle: {
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    margin: 0,
+  },
+  metricValue: {
+    fontSize: '24px',
+    fontWeight: '700',
+    color: '#0f172a',
+    margin: 0,
+  },
+  metricChange: {
+    fontSize: '12px',
+    color: '#64748b',
+    margin: 0,
+  },
+  metricIconBox: (bg) => ({
+    width: '36px',
+    height: '36px',
+    borderRadius: '8px',
+    backgroundColor: bg,
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+  }),
+
+  /* PANEL DE GRÁFICOS */
+  chartsSection: {
+    display: 'grid',
+    gridTemplateColumns: '2fr 1fr',
+    gap: '20px',
+    marginBottom: '24px',
+  },
+  chartCard: {
+    backgroundColor: '#ffffff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    padding: '24px',
+  },
+  chartTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#0f172a',
+    margin: '0 0 20px 0',
+  },
+
+  /* TABLAS Y LISTAS */
+  tableCard: {
+    backgroundColor: '#ffffff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    padding: '24px',
+    marginBottom: '24px',
+    overflowX: 'auto',
+  },
+  tableHeaderWrapper: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '16px',
+  },
+  tableBadge: {
+    backgroundColor: '#fef3c7',
+    color: '#d97706',
+    padding: '4px 10px',
+    borderRadius: '6px',
+    fontSize: '12px',
+    fontWeight: '600',
+  },
+  table: {
+    width: '100%',
+    minWidth: '900px',
+    borderCollapse: 'collapse',
+    textAlign: 'left',
+  },
+  th: {
+    fontSize: '12px',
+    textTransform: 'uppercase',
+    color: '#64748b',
+    padding: '12px 8px',
+    borderBottom: '1px solid #e2e8f0',
+    fontWeight: '600',
+  },
+  td: {
+    fontSize: '14px',
+    color: '#334155',
+    padding: '14px 8px',
+    borderBottom: '1px solid #f1f5f9',
+  },
+  statusBadge: {
+    backgroundColor: '#fef3c7',
+    color: '#d97706',
+    padding: '4px 8px',
+    borderRadius: '4px',
+    fontSize: '11px',
+    fontWeight: '600',
+  },
+
+  /* MOVIMIENTOS RECIENTES */
+  movementRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '14px 0',
+    borderBottom: '1px solid #f1f5f9',
+  },
+  movementLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+  },
+  movementIconBox: (isPositive) => ({
+    width: '32px',
+    height: '32px',
+    borderRadius: '6px',
+    backgroundColor: isPositive ? '#eff6ff' : '#fef2f2',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+  }),
+  movementMeta: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  movementTitle: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#1e293b',
+    margin: 0,
+  },
+  movementSub: {
+    fontSize: '12px',
+    color: '#64748b',
+    margin: 0,
+  },
+  movementRight: {
+    textAlign: 'right',
+  },
+  movementQty: (isPositive) => ({
+    fontSize: '14px',
+    fontWeight: '600',
+    color: isPositive ? '#16a34a' : '#dc2626',
+    margin: 0,
+  }),
+  movementTime: {
+    fontSize: '11px',
+    color: '#94a3b8',
+    margin: 0,
+  }
+};
