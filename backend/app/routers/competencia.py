@@ -27,6 +27,7 @@ class CompetidorOut(BaseModel):
 class ProductoCompetidorOut(BaseModel):
     id: int
     competidor_id: int
+    competidor_nombre: Optional[str] = None
     nombre_scrapeado: str
     precio: Decimal
     precio_original: Optional[Decimal] = None
@@ -174,3 +175,13 @@ def disparar_scraper_manual(competidor_id: int, db: Session = Depends(get_db)):
         return {"mensaje": "Scraping ejecutado con éxito", "resumen": resumen}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al ejecutar el scraper: {str(e)}")
+
+@router.delete("/match/{match_id}", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_match(match_id: int, db: Session = Depends(get_db)):
+    """Desvincula un producto interno del producto de la competencia."""
+    match = db.query(ProductoMatch).filter(ProductoMatch.id == match_id).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="El vínculo no existe.")
+    db.delete(match)
+    db.commit()
+    return None

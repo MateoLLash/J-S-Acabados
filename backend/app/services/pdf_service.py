@@ -16,7 +16,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 NEGRO = colors.HexColor("#1a1a1a")
 GRIS = colors.HexColor("#666666")
 GRIS_CLARO = colors.HexColor("#f2f2f2")
-ACENTO = colors.HexColor("#2d6a4f")   # verde discreto, cámbialo si tienes un color de marca
+ACENTO = colors.HexColor("#2d6a4f")   # Verde de tu diseño
 
 
 def _linea(grosor=0.6, color=colors.HexColor("#cccccc"), espacio_antes=3, espacio_despues=3):
@@ -124,12 +124,12 @@ def generar_pdf_comprobante(venta, items):
         alignment=TA_CENTER, textColor=colors.white, leading=12,
     )
     etiqueta_style = ParagraphStyle(
-        'Etiqueta', fontName='Helvetica-Bold', fontSize=7.3,
-        textColor=NEGRO, leading=10,
+        'Etiqueta', fontName='Helvetica', fontSize=7.5,
+        textColor=GRIS, leading=11,
     )
     valor_style = ParagraphStyle(
-        'Valor', fontName='Helvetica', fontSize=7.3,
-        textColor=NEGRO, leading=10,
+        'Valor', fontName='Helvetica', fontSize=7.5,
+        textColor=NEGRO, leading=11,
     )
     celda_izq_style = ParagraphStyle('CeldaIzq', fontName='Helvetica', fontSize=6.8, leading=8.4)
     celda_der_style = ParagraphStyle('CeldaDer', fontName='Helvetica', fontSize=6.8, leading=8.4, alignment=TA_RIGHT)
@@ -142,23 +142,23 @@ def generar_pdf_comprobante(venta, items):
     )
     total_label_style = ParagraphStyle(
         'TotalLabel', fontName='Helvetica', fontSize=7.5,
-        alignment=TA_RIGHT, textColor=GRIS,
+        alignment=TA_LEFT, textColor=NEGRO,
     )
     total_valor_style = ParagraphStyle(
         'TotalValor', fontName='Helvetica', fontSize=7.5,
         alignment=TA_RIGHT, textColor=NEGRO,
     )
     total_final_label_style = ParagraphStyle(
-        'TotalFinalLabel', fontName='Helvetica-Bold', fontSize=9,
-        alignment=TA_RIGHT, textColor=NEGRO,
+        'TotalFinalLabel', fontName='Helvetica-Bold', fontSize=10,
+        alignment=TA_LEFT, textColor=NEGRO,
     )
     total_final_valor_style = ParagraphStyle(
         'TotalFinalValor', fontName='Helvetica-Bold', fontSize=10,
-        alignment=TA_RIGHT, textColor=ACENTO,
+        alignment=TA_RIGHT, textColor=NEGRO,
     )
     legenda_style = ParagraphStyle(
-        'Legenda', fontName='Helvetica-Oblique', fontSize=6.8,
-        alignment=TA_LEFT, textColor=GRIS, leading=8.6, spaceBefore=4,
+        'Legenda', fontName='Helvetica-Oblique', fontSize=7,
+        alignment=TA_CENTER, textColor=ACENTO, leading=9, spaceBefore=4,
     )
     footer_style = ParagraphStyle(
         'Footer', fontName='Helvetica', fontSize=6.6,
@@ -166,6 +166,9 @@ def generar_pdf_comprobante(venta, items):
     )
     footer_bold_style = ParagraphStyle(
         'FooterBold', parent=footer_style, fontName='Helvetica-Bold', textColor=NEGRO,
+    )
+    footer_gracias_style = ParagraphStyle(
+        'FooterGracias', parent=footer_style, fontName='Helvetica-Oblique', textColor=ACENTO,
     )
 
     # ---------- 1. Cabecera del negocio ----------
@@ -179,8 +182,16 @@ def generar_pdf_comprobante(venta, items):
     story.append(Spacer(1, 6))
 
     # ---------- 2. Recuadro con tipo de documento y número ----------
-    tipo_comp = str(venta.tipo_documento_id)
-    tipo_doc = "FACTURA ELECTRÓNICA" if tipo_comp in ("1", "01") else "BOLETA DE VENTA ELECTRÓNICA"
+    tipo_comp = str(venta.tipo_documento_id).zfill(2)
+    es_nota_credito = tipo_comp == "07"
+    
+    if es_nota_credito:
+        tipo_doc = "NOTA DE CRÉDITO ELECTRÓNICA"
+    elif tipo_comp == "01":
+        tipo_doc = "FACTURA ELECTRÓNICA"
+    else:
+        tipo_doc = "BOLETA DE VENTA ELECTRÓNICA"
+        
     serie_numero = f"{venta.serie or 'B001'}-{str(venta.numero or venta.id).zfill(8)}"
 
     recuadro = Table(
@@ -209,15 +220,43 @@ def generar_pdf_comprobante(venta, items):
         or "00000000"
     )
 
-    datos_tabla = Table(
-        [
-            [Paragraph("Fecha:", etiqueta_style), Paragraph(fecha_emision, valor_style)],
-            [Paragraph("Moneda:", etiqueta_style), Paragraph("SOLES (PEN)", valor_style)],
-            [Paragraph("Cliente:", etiqueta_style), Paragraph(cliente_nombre, valor_style)],
-            [Paragraph("Documento:", etiqueta_style), Paragraph(str(cliente_doc), valor_style)],
-        ],
-        colWidths=[22 * mm, 48 * mm],
-    )
+    # Base de filas para Facturas y Boletas
+    filas_cliente = [
+        [Paragraph("Fecha:", etiqueta_style), Paragraph(fecha_emision, valor_style)],
+        [Paragraph("Moneda:", etiqueta_style), Paragraph("SOLES (PEN)", valor_style)],
+        [Paragraph("Cliente:", etiqueta_style), Paragraph(cliente_nombre, valor_style)],
+        [Paragraph("Documento:", etiqueta_style), Paragraph(str(cliente_doc), valor_style)],
+    ]
+
+    # Filas exclusivas para Notas de Crédito
+    if es_nota_credito:
+        doc_afectado = f"Comprobante Ref: {venta.documento_referencia_id}"
+        if getattr(venta, 'documento_referencia', None):
+            ref = venta.documento_referencia
+            tipo_ref = "Factura" if ref.tipo_comprobante == "factura" else "Boleta"
+            serie_ref = ref.serie or ("F001" if tipo_ref == "Factura" else "B001")
+            num_ref = str(ref.numero or ref.id).zfill(8)
+            doc_afectado = f"{tipo_ref} {serie_ref}-{num_ref}"
+
+        # Mapeo oficial de motivos de anulación en SUNAT
+        motivos_nc = {
+            "01": "Anulación de la operación",
+            "02": "Anulación por error en el RUC",
+            "03": "Corrección por error en la descripción",
+            "04": "Descuento global",
+            "05": "Descuento por ítem",
+            "06": "Devolución total",
+            "07": "Devolución por ítem",
+            "08": "Bonificación",
+            "09": "Disminución en el valor",
+            "10": "Otros Conceptos"
+        }
+        motivo_texto = motivos_nc.get(venta.motivo_nota_id, "Anulación de la operación")
+
+        filas_cliente.append([Paragraph("Doc. afectado:", etiqueta_style), Paragraph(doc_afectado, valor_style)])
+        filas_cliente.append([Paragraph("Motivo:", etiqueta_style), Paragraph(motivo_texto, valor_style)])
+
+    datos_tabla = Table(filas_cliente, colWidths=[24 * mm, 46 * mm])
     datos_tabla.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
@@ -248,7 +287,7 @@ def generar_pdf_comprobante(venta, items):
             Paragraph(f"{subtotal:,.2f}", celda_der_style),
         ])
 
-    t = Table(table_data, colWidths=[11 * mm, 31 * mm, 13 * mm, 15 * mm], repeatRows=1)
+    t = Table(table_data, colWidths=[9 * mm, 34 * mm, 13 * mm, 14 * mm], repeatRows=1)
     estilo_tabla = [
         ('BACKGROUND', (0, 0), (-1, 0), ACENTO),
         ('TOPPADDING', (0, 0), (-1, -1), 3),
@@ -257,9 +296,6 @@ def generar_pdf_comprobante(venta, items):
         ('LINEBELOW', (0, -1), (-1, -1), 0.6, colors.HexColor("#cccccc")),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]
-    for i in range(1, len(table_data)):
-        if i % 2 == 0:
-            estilo_tabla.append(('BACKGROUND', (0, i), (-1, i), GRIS_CLARO))
     t.setStyle(TableStyle(estilo_tabla))
     story.append(t)
 
@@ -286,22 +322,23 @@ def generar_pdf_comprobante(venta, items):
     story.append(totales_tabla)
 
     story.append(Paragraph(_monto_a_legenda(total), legenda_style))
-    story.append(_linea(espacio_antes=6))
+    story.append(_linea(espacio_antes=6, espacio_despues=6))
 
     # ---------- 6. QR + footer ----------
     qr_data = f"{ruc_emisor}|{tipo_comp}|{serie_numero}|{igv:.2f}|{total:.2f}|{fecha_emision[:10]}"
     try:
         qr_img = _generar_qr(qr_data)
         qr_img.hAlign = 'CENTER'
-        story.append(Spacer(1, 4))
         story.append(qr_img)
     except Exception:
         pass  # si falla la generación del QR, el comprobante igual se genera
 
     story.append(Spacer(1, 4))
-    story.append(Paragraph("Representación impresa del comprobante electrónico.", footer_style))
+    texto_repr = "Representación impresa de la nota de crédito electrónica." if es_nota_credito else "Representación impresa del comprobante electrónico."
+    
+    story.append(Paragraph(texto_repr, footer_style))
     story.append(Paragraph("Consulte su documento en apisunat.com", footer_bold_style))
-    story.append(Paragraph("¡Gracias por su compra!", footer_style))
+    story.append(Paragraph("¡Gracias por su compra!", footer_gracias_style))
 
     doc.build(story)
     buffer.seek(0)

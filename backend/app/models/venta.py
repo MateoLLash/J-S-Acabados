@@ -10,13 +10,15 @@ class Venta(Base):
     id = Column(Integer, primary_key=True, index=True)
     cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=True)
     tipo_comprobante = Column(Enum("boleta", "factura", name="tipo_comprobante_enum"), default="boleta")
-    # Catálogo SUNAT (migración 2): '03' boleta, '01' factura. Por ahora solo
-    # se usan estos dos; el resto de tipos (notas, guías) se agregan después.
+    # Catálogo SUNAT (migración 2): '03' boleta, '01' factura, '07' nota de crédito, etc.
     tipo_documento_id = Column(String(2), nullable=False, default="03")
     serie = Column(String(4), nullable=True)
     numero = Column(Integer, nullable=True)
-    documento_referencia_id = Column(Integer, nullable=True)
-    motivo_nota_id = Column(String(2), nullable=True)
+    
+    # NUEVO / SOPORTE NOTA DE CRÉDITO: Relaciona esta venta (si es NC) con el comprobante original
+    documento_referencia_id = Column(Integer, ForeignKey("ventas.id"), nullable=True)
+    motivo_nota_id = Column(String(2), nullable=True)  # Ej. '01' para anulación de la operación
+
     estado_sunat = Column(
         Enum("pendiente", "enviado", "aceptado", "rechazado", "anulado", name="estado_sunat_enum"),
         default="pendiente",
@@ -34,6 +36,9 @@ class Venta(Base):
     cliente = relationship("Cliente")
     metodo_pago = relationship("MetodoPago")
     items = relationship("VentaDetalle", backref="venta", cascade="all, delete-orphan")
+    
+    # Relación opcional para apuntar al documento original desde la Nota de Crédito
+    documento_referencia = relationship("Venta", remote_side=[id], foreign_keys=[documento_referencia_id], lazy="joined")
 
 
 class VentaDetalle(Base):

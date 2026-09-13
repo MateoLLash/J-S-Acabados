@@ -5,9 +5,6 @@ from pydantic import BaseModel, Field
 
 from app.schemas.catalogo import ClienteOut, MetodoPagoOut
 
-# Catálogo SUNAT (migración 2). Por ahora solo se soportan estos dos;
-# el resto ('07' nota crédito, '08' nota débito, '09'/'31' guías, etc.)
-# se agregan cuando se construyan esos módulos.
 TIPO_COMPROBANTE_A_DOCUMENTO = {
     "boleta": "03",
     "factura": "01",
@@ -42,6 +39,7 @@ class VentaOut(BaseModel):
     tipo_documento_id: str
     serie: Optional[str] = None
     numero: Optional[int] = None
+    documento_referencia_id: Optional[int] = None  # <-- AGREGADO PARA LAS NOTAS DE CRÉDITO
     estado_sunat: str
     usuario_id: int
     total: Decimal

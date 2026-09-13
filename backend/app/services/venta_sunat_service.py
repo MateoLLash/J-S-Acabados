@@ -1,30 +1,21 @@
 import os
 import requests
 from datetime import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import text
-from app.models.venta import Venta
+from app.models.venta import Venta, VentaDetalle
 
-# ==========================================
-# CONFIGURACIÓN APISUNAT API REST (BACKEND OFICIAL)
-# ==========================================
 APISUNAT_URL = "https://back.apisunat.com/personas/v1/sendBill"
 PERSONA_ID = os.getenv("APISUNAT_PERSONA_ID", "6a988a0c218b1600210cdff0")
 PERSONA_TOKEN = os.getenv("APISUNAT_TOKEN", "DEV_3RxZAEZFPSinq1ElpPReNZkTwHIq9uYu83zk0GcuCZyKpLioWCDP7EyzKZ7iAiwT")
 
 EMISOR_RUC = os.getenv("EMISOR_RUC", "10062517323")
-# Datos del emisor: la API necesita razón social y dirección dentro del XML/UBL,
-# no solo el RUC. Configúralos por variable de entorno.
 EMISOR_RAZON_SOCIAL = os.getenv("EMISOR_RAZON_SOCIAL", "HUACHACA PALACIOS SONIA AYDEE")
 EMISOR_DIRECCION = os.getenv(
     "EMISOR_DIRECCION",
     "AV. PROCERES DE LA INDEPENDENCIA NRO. 2009 URB. SAN HILARION ET. DOS SAN JUAN DE LURIGANCHO LIMA LIMA",
 )
 
-
-# ==========================================
-# Conversión de número a letras (para la leyenda "SON ... SOLES")
-# ==========================================
 _UNIDADES = ["", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE"]
 _DECENAS_10_19 = ["DIEZ", "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISEIS",
                   "DIECISIETE", "DIECIOCHO", "DIECINUEVE"]
@@ -63,7 +54,6 @@ def _tres_digitos_a_letras(n: int) -> str:
 
 
 def numero_a_letras(valor: float) -> str:
-    """Convierte un monto (soles) a letras, formato SUNAT: 'SON CIENTO DIECIOCHO CON 00/100 SOLES'."""
     entero = int(valor)
     centavos = round((valor - entero) * 100)
 
@@ -93,17 +83,21 @@ def _texto(valor) -> dict:
 
 
 def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
-    # 1. Buscar la venta
-    venta = db.query(Venta).filter(Venta.id == venta_id).first()
+    venta = (
+        db.query(Venta)
+        .options(selectinload(Venta.items).joinedload(VentaDetalle.producto))
+        .filter(Venta.id == venta_id)
+        .first()
+    )
     if not venta:
         raise Exception(f"Venta con ID {venta_id} no encontrada")
 
-    # Identificar si es factura ("01") o boleta ("03")
+    # Identificar tipo de comprobante: 01 (Factura), 03 (Boleta), 07 (Nota de Crédito)
     tipo_comp = str(venta.tipo_documento_id).zfill(2)
-    if tipo_comp not in ["01", "03"]:
+    if tipo_comp not in ["01", "03", "07"]:
         tipo_comp = "03"
 
-    # 2. Cálculos de totales e IGV (igual que antes)
+    es_nota_credito = (tipo_comp == "07")
     total_venta = float(venta.total)
 
     items_calculados = []
@@ -129,12 +123,8 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
     valor_venta_total = round(sum(i["valor_venta"] for i in items_calculados), 2)
     total_igv = round(sum(i["igv"] for i in items_calculados), 2)
 
-    # 3. Validación de cliente
     doc_cliente = "00000000"
-    tipo_doc_cliente = "1"  # 1 = DNI, 6 = RUC (schemeID UBL)
-
-    if tipo_comp == "01":
-        tipo_doc_cliente = "6"
+    tipo_doc_cliente = "1"
 
     if venta.cliente:
         if hasattr(venta.cliente, 'documento') and venta.cliente.documento:
@@ -146,21 +136,16 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
             tipo_doc_cliente = "6"
         elif hasattr(venta.cliente, 'dni') and venta.cliente.dni:
             doc_cliente = venta.cliente.dni
-            if tipo_comp == "01":
-                raise Exception("Una factura requiere RUC, no DNI.")
 
-    if tipo_comp == "03" and total_venta >= 700.00:
-        if not doc_cliente or doc_cliente == "00000000":
-            raise Exception("Boletas de S/ 700+ requieren DNI del cliente.")
-
-    if tipo_comp == "01" and tipo_doc_cliente != "6":
-        raise Exception("Las facturas requieren obligatoriamente un número de RUC válido.")
+    if len(str(doc_cliente)) == 11:
+        tipo_doc_cliente = "6"
+    elif len(str(doc_cliente)) == 8:
+        tipo_doc_cliente = "1"
 
     razon_social_cliente = venta.cliente.nombre if venta.cliente else "CLIENTE GENERAL"
     direccion_cliente = getattr(venta.cliente, 'direccion', '') or "-"
 
-    # 4. Serie / correlativo / nombre de archivo (esto ya coincidía con lo que espera APISUNAT)
-    serie_comp = venta.serie or ("F001" if tipo_comp == "01" else "B001")
+    serie_comp = venta.serie or ("F001" if tipo_comp == "01" else ("FNC1" if es_nota_credito else "B001"))
     numero_correlativo = str(int(venta.numero or venta.id)).zfill(8)
     file_name = f"{EMISOR_RUC}-{tipo_comp}-{serie_comp}-{numero_correlativo}"
 
@@ -168,12 +153,14 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
     fecha_emision = venta.fecha.strftime('%Y-%m-%d') if venta.fecha else ahora.strftime('%Y-%m-%d')
     hora_emision = ahora.strftime('%H:%M:%S')
 
-    # 5. Construcción de las líneas de detalle (cac:InvoiceLine) en formato UBL
-    invoice_lines = []
+    # Construcción de líneas (CreditNoteLine para NC o InvoiceLine para Boleta/Factura)
+    lineas_ubl = []
+    nombre_cantidad_tag = "cbc:CreditedQuantity" if es_nota_credito else "cbc:InvoicedQuantity"
+
     for it in items_calculados:
-        invoice_lines.append({
+        lineas_ubl.append({
             "cbc:ID": _texto(it["numero_linea"]),
-            "cbc:InvoicedQuantity": {
+            nombre_cantidad_tag: {
                 "_attributes": {"unitCode": "NIU"},
                 "_text": it["cantidad"],
             },
@@ -209,18 +196,13 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
             "cac:Price": {"cbc:PriceAmount": _monto(it["valor_unitario"])},
         })
 
-    # 6. documentBody completo, en el formato UBL/Greenter (cbc:/cac:) que realmente
-    #    exige/devuelve APISUNAT — este es el cambio principal respecto a la versión anterior.
+    # Construcción del documentBody según el estándar UBL 2.1
     document_body = {
         "cbc:UBLVersionID": _texto("2.1"),
         "cbc:CustomizationID": _texto("2.0"),
         "cbc:ID": _texto(f"{serie_comp}-{numero_correlativo}"),
         "cbc:IssueDate": _texto(fecha_emision),
         "cbc:IssueTime": _texto(hora_emision),
-        "cbc:InvoiceTypeCode": {
-            "_attributes": {"listID": "0101"},
-            "_text": tipo_comp,
-        },
         "cbc:Note": [
             {
                 "_text": numero_a_letras(total_venta),
@@ -255,10 +237,6 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
                 },
             }
         },
-        "cac:PaymentTerms": {
-            "cbc:ID": _texto("FormaPago"),
-            "cbc:PaymentMeansID": _texto("Contado"),
-        },
         "cac:TaxTotal": {
             "cbc:TaxAmount": _monto(total_igv),
             "cac:TaxSubtotal": [
@@ -280,8 +258,57 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
             "cbc:TaxInclusiveAmount": _monto(total_venta),
             "cbc:PayableAmount": _monto(total_venta),
         },
-        "cac:InvoiceLine": invoice_lines,
     }
+
+    if es_nota_credito:
+        # Documento que se modifica (comprobante original)
+        venta_ref = db.query(Venta).filter(Venta.id == venta.documento_referencia_id).first() if venta.documento_referencia_id else None
+        serie_ref = venta_ref.serie if (venta_ref and venta_ref.serie) else ("F001" if serie_comp.startswith("F") else "B001")
+        numero_ref = str(int(venta_ref.numero or venta_ref.id)).zfill(8) if venta_ref else "00000001"
+        tipo_doc_ref = str(venta_ref.tipo_documento_id).zfill(2) if venta_ref else ("01" if serie_ref.startswith("F") else "03")
+
+        # Catálogo oficial de SUNAT para el XML
+        motivos_nc_oficial = {
+            "01": "ANULACION DE LA OPERACION",
+            "02": "ANULACION POR ERROR EN EL RUC",
+            "03": "CORRECCION POR ERROR EN LA DESCRIPCION",
+            "04": "DESCUENTO GLOBAL",
+            "05": "DESCUENTO POR ITEM",
+            "06": "DEVOLUCION TOTAL",
+            "07": "DEVOLUCION POR ITEM",
+            "08": "BONIFICACION",
+            "09": "DISMINUCION EN EL VALOR",
+            "10": "OTROS CONCEPTOS"
+        }
+        codigo_motivo = venta.motivo_nota_id or "01"
+        descripcion_oficial = motivos_nc_oficial.get(codigo_motivo, "ANULACION DE LA OPERACION")
+
+        document_body["cac:DiscrepancyResponse"] = [
+            {
+                "cbc:ReferenceID": _texto(f"{serie_ref}-{numero_ref}"),
+                "cbc:ResponseCode": _texto(codigo_motivo),
+                "cbc:Description": _texto(descripcion_oficial)
+            }
+        ]
+        document_body["cac:BillingReference"] = [
+            {
+                "cac:InvoiceDocumentReference": {
+                    "cbc:ID": _texto(f"{serie_ref}-{numero_ref}"),
+                    "cbc:DocumentTypeCode": _texto(tipo_doc_ref)
+                }
+            }
+        ]
+        document_body["cac:CreditNoteLine"] = lineas_ubl
+    else:
+        document_body["cbc:InvoiceTypeCode"] = {
+            "_attributes": {"listID": "0101"},
+            "_text": tipo_comp,
+        }
+        document_body["cac:PaymentTerms"] = {
+            "cbc:ID": _texto("FormaPago"),
+            "cbc:PaymentMeansID": _texto("Contado"),
+        }
+        document_body["cac:InvoiceLine"] = lineas_ubl
 
     payload = {
         "personaId": PERSONA_ID,
@@ -292,10 +319,8 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
 
     headers = {"Content-Type": "application/json"}
 
-    # 7. Envío a APISUNAT (sin cambios en la lógica de manejo de respuesta)
     try:
         db.execute(text("SELECT set_config('app.current_user_id', :user_id, true)"), {"user_id": str(usuario_id)})
-
         print(f"Enviando comprobante {file_name} a APISUNAT...")
 
         response = requests.post(APISUNAT_URL, json=payload, headers=headers, timeout=20)
@@ -309,7 +334,6 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
             return {"exito": True, "mensaje": "Comprobante enviado", "detalle": res_json}
         else:
             venta.estado_sunat = "rechazado"
-
             try:
                 error_json = response.json()
                 error_msg = str(error_json)

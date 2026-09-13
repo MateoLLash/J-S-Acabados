@@ -38,5 +38,11 @@ export const competenciaService = {
   async obtenerHistorico(productoCompetidorId) {
     const res = await axios.get(`${API_URL}/historico/${productoCompetidorId}`);
     return res.data;
+  },
+
+    async eliminarMatch(matchId) {
+    const res = await axios.delete(`${API_URL}/match/${matchId}`);
+    return res.data;
   }
+ 
 };

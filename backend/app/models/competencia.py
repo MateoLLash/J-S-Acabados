@@ -31,6 +31,9 @@ class ProductoCompetidor(Base):
     competidor = relationship("Competidor", back_populates="productos")
     historico = relationship("HistoricoPrecioCompetencia", back_populates="producto_competidor", cascade="all, delete-orphan")
 
+    @property
+    def competidor_nombre(self):
+        return self.competidor.nombre if self.competidor else None
 
 class HistoricoPrecioCompetencia(Base):
     __tablename__ = "historico_precios_competencia"
