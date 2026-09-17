@@ -1,8 +1,10 @@
+import os
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload, selectinload
+from datetime import timedelta
 
 from app.database import get_db
 from app.models.venta import Venta, VentaDetalle
@@ -19,6 +21,56 @@ router = APIRouter(prefix="/ventas", tags=["ventas"])
 class AnulacionRequest(BaseModel):
     codigo: str
     motivo: str
+
+
+# =======================================================
+# Función para Auto-Guardar PDFs en el Servidor
+# =======================================================
+def guardar_pdf_local(venta_id: int, db: Session, es_nc: bool = False):
+    try:
+        # 1. Obtener la venta con todos sus items
+        venta = db.query(Venta).options(
+            selectinload(Venta.items).joinedload(VentaDetalle.producto)
+        ).filter(Venta.id == venta_id).first()
+        
+        if not venta:
+            return
+
+        # 2. Generar los bytes del PDF usando el servicio actual
+        pdf_bytes = generar_pdf_comprobante(venta, venta.items)
+        
+        # 3. Determinar la jerarquía de carpetas ajustada a la hora de Perú (UTC-5)
+        if venta.fecha:
+            fecha_peru = venta.fecha - timedelta(hours=5)
+            fecha_str = fecha_peru.strftime("%Y-%m-%d")
+        else:
+            fecha_str = "Sin_Fecha"
+        
+        if es_nc:
+            tipo_carpeta = "Notas_de_Credito"
+        elif str(venta.tipo_documento_id).zfill(2) == "01":
+            tipo_carpeta = "Facturas"
+        else:
+            tipo_carpeta = "Boletas"
+            
+        # Se creará: comprobantes_guardados/YYYY-MM-DD/Tipo/
+        ruta_directorio = os.path.join("comprobantes_guardados", fecha_str, tipo_carpeta)
+        os.makedirs(ruta_directorio, exist_ok=True)
+        
+        # 4. Asignar el nombre del archivo
+        serie = venta.serie or ("NC01" if es_nc else ("F001" if tipo_carpeta == "Facturas" else "B001"))
+        numero = str(venta.numero or venta.id).zfill(8)
+        nombre_archivo = f"{serie}-{numero}.pdf"
+        
+        ruta_completa = os.path.join(ruta_directorio, nombre_archivo)
+        
+        # 5. Escribir el PDF en el disco
+        with open(ruta_completa, "wb") as f:
+            f.write(pdf_bytes)
+            
+        print(f"📄 PDF archivado en servidor: {ruta_completa}")
+    except Exception as e:
+        print(f"⚠️ Error guardando PDF en el servidor local: {e}")
 
 
 @router.get("/", response_model=List[VentaOut])
@@ -51,6 +103,9 @@ def registrar_venta(data: VentaCreate, db: Session = Depends(get_db), user=Depen
     except Exception as e:
         print(f"\n❌ ERROR DE CÓDIGO AL CONECTAR CON SUNAT: {str(e)}\n")
         
+    # GUARDADO AUTOMÁTICO AL TERMINAR LA VENTA
+    guardar_pdf_local(nueva_venta.id, db, es_nc=False)
+        
     return nueva_venta
 
 
@@ -69,6 +124,12 @@ def anular_venta(venta_id: int, data: AnulacionRequest, db: Session = Depends(ge
     resultado = procesar_nota_credito_sunat(venta_id, data.codigo, data.motivo, db, user.id)
     if not resultado.get("exito"):
         raise HTTPException(status_code=400, detail=resultado.get("error"))
+        
+    # GUARDADO AUTOMÁTICO AL GENERAR NOTA DE CRÉDITO
+    nc_id = resultado.get("nota_credito_id")
+    if nc_id:
+        guardar_pdf_local(nc_id, db, es_nc=True)
+        
     return {"mensaje": "Venta anulada correctamente mediante Nota de Crédito", "detalles": resultado}
 
 
