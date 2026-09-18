@@ -13,7 +13,7 @@ from app.auth.dependencies import get_current_user
 from app.services.venta_service import crear_venta
 from app.services.venta_sunat_service import procesar_envio_sunat
 from app.services.pdf_service import generar_pdf_comprobante
-from app.services.nota_credito_service import procesar_nota_credito_sunat
+from app.services.nota_credito_service import procesar_anulacion
 
 router = APIRouter(prefix="/ventas", tags=["ventas"])
 
@@ -120,17 +120,20 @@ def reintentar_envio_sunat(venta_id: int, db: Session = Depends(get_db), user=De
 
 @router.post("/{venta_id}/anular")
 def anular_venta(venta_id: int, data: AnulacionRequest, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    # Pasamos data.codigo y data.motivo al servicio
-    resultado = procesar_nota_credito_sunat(venta_id, data.codigo, data.motivo, db, user.id)
+    # El servicio ahora decide inteligentemente si es Baja o NC
+    resultado = procesar_anulacion(venta_id, data.codigo, data.motivo, db, user.id)
     if not resultado.get("exito"):
         raise HTTPException(status_code=400, detail=resultado.get("error"))
         
-    # GUARDADO AUTOMÁTICO AL GENERAR NOTA DE CRÉDITO
-    nc_id = resultado.get("nota_credito_id")
-    if nc_id:
-        guardar_pdf_local(nc_id, db, es_nc=True)
+    # GUARDADO AUTOMÁTICO DE PDF *SOLO* SI FUE NOTA DE CRÉDITO
+    if resultado.get("tipo_anulacion") == "NOTA_CREDITO":
+        nc_id = resultado.get("nota_credito_id")
+        if nc_id:
+            guardar_pdf_local(nc_id, db, es_nc=True)
+        return {"mensaje": "Venta anulada mediante Nota de Crédito.", "detalles": resultado}
         
-    return {"mensaje": "Venta anulada correctamente mediante Nota de Crédito", "detalles": resultado}
+    # SI FUE BAJA MISMO DÍA
+    return {"mensaje": "Venta dada de baja correctamente (Mismo día).", "detalles": resultado}
 
 
 @router.get("/{venta_id}/pdf")

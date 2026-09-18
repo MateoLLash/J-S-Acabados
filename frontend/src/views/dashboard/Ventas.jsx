@@ -49,11 +49,11 @@ export default function Ventas() {
   const [pdfUrlModal, setPdfUrlModal] = useState(null);
   const [cargandoPdfModal, setCargandoPdfModal] = useState(false);
 
-  // Estados para el Modal de Anulación Avanzado
+  // Estados para el Modal de Anulación Inteligente (Baja vs NC)
   const [modalAnular, setModalAnular] = useState(false);
   const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
-  const [tipoAnulacion, setTipoAnulacion] = useState('Nota de Crédito Electrónica');
-  const [motivoSeleccionado, setMotivoSeleccionado] = useState('01'); // Código SUNAT por defecto
+  const [tipoAnulacion, setTipoAnulacion] = useState('BAJA'); // 'BAJA' o 'NC'
+  const [motivoSeleccionado, setMotivoSeleccionado] = useState('RA'); // 'RA' o código de Catálogo 09
   const [descripcionMotivo, setDescripcionMotivo] = useState('');
   const [confirmadoCheckbox, setConfirmadoCheckbox] = useState(false);
   const [anulando, setAnulando] = useState(false);
@@ -127,7 +127,6 @@ export default function Ventas() {
   useEffect(() => {
     const clienteActivo = clientes.find((c) => String(c.id) === String(clienteId));
     if (clienteActivo) {
-      // Obtenemos el documento (DNI o RUC)
       const doc = clienteActivo.documento || "";
       if (doc.length === 11) {
         setTipoComprobante('factura');
@@ -135,12 +134,10 @@ export default function Ventas() {
         setTipoComprobante('boleta');
       }
     } else {
-      // Si no hay cliente seleccionado, asumimos Boleta por defecto
       setTipoComprobante('boleta');
     }
   }, [clienteId, clientes]);
 
-  // Variables para la interfaz
   const clienteActivo = clientes.find((c) => String(c.id) === String(clienteId));
   const esClienteRUC = clienteActivo && clienteActivo.documento && clienteActivo.documento.length === 11;
 
@@ -163,7 +160,6 @@ export default function Ventas() {
       setClienteId(String(creado.id));
       setModalCliente(false);
       
-      // Limpiar formulario de cliente
       setTipoDocCliente("DNI");
       setNombreCliente("");
       setDocumentoCliente("");
@@ -191,7 +187,6 @@ export default function Ventas() {
     }
   }, [vista]);
 
-  // Cálculos financieros para el resumen
   const subtotal = carrito.reduce(
     (acc, item) => acc + parseFloat(item.precio_venta) * (Number(item.cantidad) || 0),
     0
@@ -358,10 +353,26 @@ export default function Ventas() {
     setPdfUrlModal(null);
   };
 
+  // ==========================================
+  // 🚀 APERTURA INTELIGENTE DEL MODAL DE ANULACIÓN (REGLA 7 DÍAS SUNAT)
+  // ==========================================
   const abrirModalAnular = (v) => {
     setVentaSeleccionada(v);
-    setTipoAnulacion('Nota de Crédito Electrónica');
-    setMotivoSeleccionado('01'); // Código oficial 01 por defecto
+    
+    // Calcular días transcurridos desde la emisión
+    const fechaVenta = new Date(v.fecha);
+    const hoy = new Date();
+    const diferenciaDias = Math.floor((hoy - fechaVenta) / (1000 * 60 * 60 * 24));
+
+    // Si está dentro de los 7 días, seleccionamos Baja por defecto. Si no, Nota de Crédito.
+    if (diferenciaDias <= 7) {
+      setTipoAnulacion('BAJA');
+      setMotivoSeleccionado('RA');
+    } else {
+      setTipoAnulacion('NC');
+      setMotivoSeleccionado('01');
+    }
+
     setDescripcionMotivo('');
     setConfirmadoCheckbox(false);
     setModalAnular(true);
@@ -374,7 +385,6 @@ export default function Ventas() {
     try {
       await apiFetch(`/ventas/${ventaSeleccionada.id}/anular`, {
         method: 'POST',
-        // Enviamos el código oficial y la descripción extra si existe
         body: JSON.stringify({ 
           codigo: motivoSeleccionado,
           motivo: descripcionMotivo.trim() || 'Anulación de la operación'
@@ -626,14 +636,14 @@ export default function Ventas() {
                     <select 
                       value={tipoComprobante} 
                       onChange={(e) => setTipoComprobante(e.target.value)}
-                      disabled // Se desactiva para que el usuario no manipule el sistema
+                      disabled 
                       style={{ 
                         width: '100%', 
                         padding: '8px 8px 8px 28px', 
                         borderRadius: '8px', 
                         border: '1px solid #cbd5e1', 
                         fontSize: '12px', 
-                        backgroundColor: '#f1f5f9', // Fondo gris indicando que es automático
+                        backgroundColor: '#f1f5f9', 
                         color: '#475569',
                         fontWeight: '600',
                         outline: 'none', 
@@ -754,7 +764,7 @@ export default function Ventas() {
       )}
 
       {/* ------------------------------------------------------------- */}
-      {/* 🚀 MODAL DE ANULACIÓN AVANZADO (CATÁLOGO SUNAT)                */}
+      {/* 🚀 MODAL DE ANULACIÓN INTELIGENTE (COMBOBOX RESTRINGIDO SUNAT) */}
       {/* ------------------------------------------------------------- */}
       {modalAnular && ventaSeleccionada && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
@@ -767,7 +777,7 @@ export default function Ventas() {
             <div>
               <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Anular comprobante</h3>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
-                Esta acción genera una comunicación a SUNAT y no se puede deshacer.
+                Esta acción comunica directamente con SUNAT y no se puede deshacer.
               </p>
             </div>
 
@@ -805,44 +815,84 @@ export default function Ventas() {
             </div>
 
             <form onSubmit={handleConfirmarAnulacion} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              
+              {/* COMBOBOX DE TIPO DE ANULACIÓN CON RESTRICCIÓN DE 7 DÍAS SUNAT */}
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Tipo de anulación</label>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Método de anulación</label>
                 <select
                   value={tipoAnulacion}
-                  onChange={(e) => setTipoAnulacion(e.target.value)}
-                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', outline: 'none', cursor: 'pointer' }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTipoAnulacion(val);
+                    if (val === 'BAJA') {
+                      setMotivoSeleccionado('RA');
+                    } else {
+                      setMotivoSeleccionado('01');
+                    }
+                  }}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', outline: 'none', cursor: 'pointer', fontWeight: '600' }}
                 >
-                  <option value="Nota de Crédito Electrónica">Nota de Crédito Electrónica</option>
+                  {(() => {
+                    const fechaVenta = new Date(ventaSeleccionada.fecha);
+                    const hoy = new Date();
+                    const diferenciaDias = Math.floor((hoy - fechaVenta) / (1000 * 60 * 60 * 24));
+                    const plazoVencido = diferenciaDias > 7;
+
+                    return (
+                      <>
+                        <option value="BAJA" disabled={plazoVencido}>
+                          {plazoVencido ? '❌ Comunicación de Baja (Bloqueado: > 7 días SUNAT)' : '⚡ Comunicación de Baja (RA - Plazo vigente)'}
+                        </option>
+                        <option value="NC">
+                          📄 Nota de Crédito Electrónica (Catálogo 09)
+                        </option>
+                      </>
+                    );
+                  })()}
                 </select>
               </div>
 
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Motivo (Catálogo SUNAT No. 09)</label>
-                <select
-                  value={motivoSeleccionado}
-                  onChange={(e) => setMotivoSeleccionado(e.target.value)}
-                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', outline: 'none', cursor: 'pointer' }}
-                >
-                  <option value="01">01 - Anulación de la operación</option>
-                  <option value="02">02 - Anulación por error en el RUC</option>
-                  <option value="03">03 - Corrección por error en la descripción</option>
-                  <option value="04">04 - Descuento global</option>
-                  <option value="05">05 - Descuento por ítem</option>
-                  <option value="06">06 - Devolución total</option>
-                  <option value="07">07 - Devolución por ítem</option>
-                  <option value="08">08 - Bonificación</option>
-                  <option value="09">09 - Disminución en el valor</option>
-                  <option value="10">10 - Otros Conceptos</option>
-                </select>
-              </div>
+              {/* Dependiendo de la selección mostramos Catálogo 09 o Nota Informativa de Baja */}
+              {tipoAnulacion === 'NC' ? (
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Motivo Nota de Crédito (Catálogo SUNAT No. 09)</label>
+                  <select
+                    value={motivoSeleccionado}
+                    onChange={(e) => setMotivoSeleccionado(e.target.value)}
+                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', outline: 'none', cursor: 'pointer' }}
+                  >
+                    <option value="01">01 - Anulación de la operación</option>
+                    <option value="02">02 - Anulación por error en el RUC</option>
+                    <option value="03">03 - Corrección por error en la descripción</option>
+                    <option value="04">04 - Descuento global</option>
+                    <option value="05">05 - Descuento por ítem</option>
+                    <option value="06">06 - Devolución total</option>
+                    <option value="07">07 - Devolución por ítem</option>
+                    <option value="08">08 - Bonificación</option>
+                    <option value="09">09 - Disminución en el valor</option>
+                    <option value="10">10 - Otros Conceptos</option>
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Código SUNAT</label>
+                  <input
+                    type="text"
+                    value="RA - Comunicación de Baja Electrónica"
+                    readOnly
+                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#f1f5f9', color: '#475569', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+              )}
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Descripción adicional (Opcional)</label>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Descripción del motivo</label>
                 <textarea
                   rows={3}
-                  placeholder="Detalles adicionales internos..."
+                  placeholder={tipoAnulacion === 'BAJA' ? "Ej. Error de digitación en el comprobante..." : "Detalles adicionales internos..."}
                   value={descripcionMotivo}
                   onChange={(e) => setDescripcionMotivo(e.target.value)}
+                  required={tipoAnulacion === 'BAJA'}
                   style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none', boxSizing: 'border-box', resize: 'none' }}
                 />
               </div>
@@ -856,7 +906,7 @@ export default function Ventas() {
                   style={{ marginTop: '2px', cursor: 'pointer' }}
                 />
                 <label htmlFor="chkConfirmar" style={{ cursor: 'pointer' }}>
-                  Confirmo que los datos son correctos y autorizo el envío de la anulación a SUNAT.
+                  Confirmo que los datos son correctos y autorizo la anulación ante SUNAT.
                 </label>
               </div>
 
@@ -878,7 +928,7 @@ export default function Ventas() {
                     cursor: !confirmadoCheckbox || anulando ? 'not-allowed' : 'pointer', fontSize: '14px'
                   }}
                 >
-                  {anulando ? 'Procesando...' : 'Anular comprobante'}
+                  {anulando ? 'Procesando...' : 'Confirmar Anulación'}
                 </button>
               </div>
             </form>
