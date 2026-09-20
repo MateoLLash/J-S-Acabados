@@ -1,11 +1,14 @@
 import os
 import requests
+import re
 from datetime import datetime
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import text
 from app.models.venta import Venta, VentaDetalle
+from app.models.baja import ComunicacionBaja, ComunicacionBajaDetalle
 
 APISUNAT_URL = "https://back.apisunat.com/personas/v1/sendBill"
+APISUNAT_VOIDBILL_URL = "https://back.apisunat.com/personas/v1/voidBill" # Endpoint nativo de APISUNAT para bajas
 PERSONA_ID = os.getenv("APISUNAT_PERSONA_ID", "6a988a0c218b1600210cdff0")
 PERSONA_TOKEN = os.getenv("APISUNAT_TOKEN", "DEV_3RxZAEZFPSinq1ElpPReNZkTwHIq9uYu83zk0GcuCZyKpLioWCDP7EyzKZ7iAiwT")
 
@@ -23,7 +26,6 @@ _DECENAS = ["", "", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA",
             "SETENTA", "OCHENTA", "NOVENTA"]
 _CENTENAS = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS",
              "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"]
-
 
 def _tres_digitos_a_letras(n: int) -> str:
     if n == 0:
@@ -52,7 +54,6 @@ def _tres_digitos_a_letras(n: int) -> str:
                 partes.append(deca)
     return " ".join(partes)
 
-
 def numero_a_letras(valor: float) -> str:
     entero = int(valor)
     centavos = round((valor - entero) * 100)
@@ -73,14 +74,11 @@ def numero_a_letras(valor: float) -> str:
 
     return f"SON {letras} CON {centavos:02d}/100 SOLES"
 
-
 def _monto(valor: float) -> dict:
     return {"_attributes": {"currencyID": "PEN"}, "_text": round(float(valor), 2)}
 
-
 def _texto(valor) -> dict:
     return {"_text": valor}
-
 
 def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
     venta = (
@@ -92,12 +90,13 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
     if not venta:
         raise Exception(f"Venta con ID {venta_id} no encontrada")
 
-    # Identificar tipo de comprobante: 01 (Factura), 03 (Boleta), 07 (Nota de Crédito)
+    # Identificar tipo de comprobante: 01 (Factura), 03 (Boleta), 07 (NC), 08 (ND)
     tipo_comp = str(venta.tipo_documento_id).zfill(2)
-    if tipo_comp not in ["01", "03", "07"]:
+    if tipo_comp not in ["01", "03", "07", "08"]:
         tipo_comp = "03"
 
     es_nota_credito = (tipo_comp == "07")
+    es_nota_debito = (tipo_comp == "08")
     total_venta = float(venta.total)
 
     items_calculados = []
@@ -145,7 +144,17 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
     razon_social_cliente = venta.cliente.nombre if venta.cliente else "CLIENTE GENERAL"
     direccion_cliente = getattr(venta.cliente, 'direccion', '') or "-"
 
-    serie_comp = venta.serie or ("F001" if tipo_comp == "01" else ("FNC1" if es_nota_credito else "B001"))
+    # Asignación automática de Serie si no viene predefinida
+    if venta.serie:
+        serie_comp = venta.serie
+    else:
+        if es_nota_credito:
+            serie_comp = "FC01"
+        elif es_nota_debito:
+            serie_comp = "FD01"
+        else:
+            serie_comp = "F001" if tipo_comp == "01" else "B001"
+
     numero_correlativo = str(int(venta.numero or venta.id)).zfill(8)
     file_name = f"{EMISOR_RUC}-{tipo_comp}-{serie_comp}-{numero_correlativo}"
 
@@ -153,9 +162,15 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
     fecha_emision = venta.fecha.strftime('%Y-%m-%d') if venta.fecha else ahora.strftime('%Y-%m-%d')
     hora_emision = ahora.strftime('%H:%M:%S')
 
-    # Construcción de líneas (CreditNoteLine para NC o InvoiceLine para Boleta/Factura)
     lineas_ubl = []
-    nombre_cantidad_tag = "cbc:CreditedQuantity" if es_nota_credito else "cbc:InvoicedQuantity"
+    
+    # SUNAT exige etiquetas de cantidad diferentes según el documento
+    if es_nota_credito:
+        nombre_cantidad_tag = "cbc:CreditedQuantity"
+    elif es_nota_debito:
+        nombre_cantidad_tag = "cbc:DebitedQuantity"
+    else:
+        nombre_cantidad_tag = "cbc:InvoicedQuantity"
 
     for it in items_calculados:
         lineas_ubl.append({
@@ -196,7 +211,9 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
             "cac:Price": {"cbc:PriceAmount": _monto(it["valor_unitario"])},
         })
 
-    # Construcción del documentBody según el estándar UBL 2.1
+    # 🔥 CORRECCIÓN CLAVE: El nombre del tag de totales cambia según el documento
+    tag_totales = "cac:RequestedMonetaryTotal" if es_nota_debito else "cac:LegalMonetaryTotal"
+
     document_body = {
         "cbc:UBLVersionID": _texto("2.1"),
         "cbc:CustomizationID": _texto("2.0"),
@@ -253,35 +270,44 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
                 }
             ],
         },
-        "cac:LegalMonetaryTotal": {
+        tag_totales: {
             "cbc:LineExtensionAmount": _monto(valor_venta_total),
             "cbc:TaxInclusiveAmount": _monto(total_venta),
             "cbc:PayableAmount": _monto(total_venta),
         },
     }
 
-    if es_nota_credito:
-        # Documento que se modifica (comprobante original)
+    if es_nota_credito or es_nota_debito:
         venta_ref = db.query(Venta).filter(Venta.id == venta.documento_referencia_id).first() if venta.documento_referencia_id else None
         serie_ref = venta_ref.serie if (venta_ref and venta_ref.serie) else ("F001" if serie_comp.startswith("F") else "B001")
         numero_ref = str(int(venta_ref.numero or venta_ref.id)).zfill(8) if venta_ref else "00000001"
         tipo_doc_ref = str(venta_ref.tipo_documento_id).zfill(2) if venta_ref else ("01" if serie_ref.startswith("F") else "03")
 
-        # Catálogo oficial de SUNAT para el XML
-        motivos_nc_oficial = {
-            "01": "ANULACION DE LA OPERACION",
-            "02": "ANULACION POR ERROR EN EL RUC",
-            "03": "CORRECCION POR ERROR EN LA DESCRIPCION",
-            "04": "DESCUENTO GLOBAL",
-            "05": "DESCUENTO POR ITEM",
-            "06": "DEVOLUCION TOTAL",
-            "07": "DEVOLUCION POR ITEM",
-            "08": "BONIFICACION",
-            "09": "DISMINUCION EN EL VALOR",
-            "10": "OTROS CONCEPTOS"
-        }
+        # Catálogos oficiales SUNAT (09 para NC, 10 para ND)
+        if es_nota_credito:
+            motivos_oficial = {
+                "01": "ANULACION DE LA OPERACION",
+                "02": "ANULACION POR ERROR EN EL RUC",
+                "03": "CORRECCION POR ERROR EN LA DESCRIPCION",
+                "04": "DESCUENTO GLOBAL",
+                "05": "DESCUENTO POR ITEM",
+                "06": "DEVOLUCION TOTAL",
+                "07": "DEVOLUCION POR ITEM",
+                "08": "BONIFICACION",
+                "09": "DISMINUCION EN EL VALOR",
+                "10": "OTROS CONCEPTOS"
+            }
+            line_tag = "cac:CreditNoteLine"
+        else:
+            motivos_oficial = {
+                "01": "INTERESES POR MORA",
+                "02": "AUMENTO EN EL VALOR",
+                "03": "PENALIDADES/ OTROS CONCEPTOS"
+            }
+            line_tag = "cac:DebitNoteLine"
+
         codigo_motivo = venta.motivo_nota_id or "01"
-        descripcion_oficial = motivos_nc_oficial.get(codigo_motivo, "ANULACION DE LA OPERACION")
+        descripcion_oficial = motivos_oficial.get(codigo_motivo, "OTROS CONCEPTOS")
 
         document_body["cac:DiscrepancyResponse"] = [
             {
@@ -298,7 +324,7 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
                 }
             }
         ]
-        document_body["cac:CreditNoteLine"] = lineas_ubl
+        document_body[line_tag] = lineas_ubl
     else:
         document_body["cbc:InvoiceTypeCode"] = {
             "_attributes": {"listID": "0101"},
@@ -359,3 +385,82 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
         return {"exito": False, "error": str(e)}
     finally:
         db.execute(text("SELECT set_config('app.current_user_id', '', true)"))
+
+
+# ==============================================================================
+# NUEVO: FUNCIÓN PARA ENVIAR COMUNICACIONES DE BAJA (RA) USANDO voidBill
+# ==============================================================================
+def enviar_comunicacion_baja_sunat(comunicacion_id: int, db: Session):
+    baja = db.query(ComunicacionBaja).filter(ComunicacionBaja.id == comunicacion_id).first()
+    if not baja:
+        return {"exito": False, "error": "Registro de Comunicación de Baja no encontrado."}
+
+    detalles_baja = db.query(ComunicacionBajaDetalle).filter(ComunicacionBajaDetalle.comunicacion_baja_id == comunicacion_id).all()
+    if not detalles_baja:
+        return {"exito": False, "error": "No hay documentos a dar de baja."}
+
+    # Ubicar la venta original que se desea anular
+    venta_original = db.query(Venta).filter(Venta.id == detalles_baja[0].venta_id).first()
+    if not venta_original:
+        return {"exito": False, "error": "Venta original no encontrada."}
+
+    # --------------------------------------------------------------------------
+    # Extraer el ID interno de APISUNAT (MongoDB ObjectId)
+    # Lo buscamos dentro de la columna observaciones_sunat usando Expresiones Regulares
+    # --------------------------------------------------------------------------
+    document_id_api = None
+    if venta_original.observaciones_sunat:
+        # Busca el patrón "documentId: " seguido de caracteres alfanuméricos
+        match = re.search(r"documentId:\s*([a-zA-Z0-9]+)", venta_original.observaciones_sunat)
+        if match:
+            document_id_api = match.group(1)
+
+    if not document_id_api:
+        baja.estado = "error_envio"
+        db.commit()
+        return {"exito": False, "error": "No se encontró el ID interno de APISUNAT en la venta. Asegúrate de anular un comprobante que fue aceptado recientemente."}
+
+    # Construimos el payload de anulación usando el ID interno que APISUNAT exige
+    payload = {
+        "personaId": PERSONA_ID,
+        "personaToken": PERSONA_TOKEN,
+        "documentId": document_id_api, # Ej: 6aa8f1b2c3d4e5f6a7b8c9d0
+        "reason": detalles_baja[0].motivo_baja[:100]
+    }
+
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        print(f"Enviando solicitud de Baja (voidBill) para ID interno {document_id_api} a APISUNAT...")
+        response = requests.post(APISUNAT_VOIDBILL_URL, json=payload, headers=headers, timeout=20)
+
+        if response.status_code in [200, 201]:
+            res_json = response.json()
+            ticket = res_json.get("ticket") or res_json.get("documentId")
+            
+            if ticket:
+                baja.numero_ticket = str(ticket)
+                baja.estado = "enviado"
+            else:
+                baja.estado = "procesado_sin_ticket"
+                
+            db.commit()
+            return {"exito": True, "ticket": baja.numero_ticket, "mensaje": "Baja enviada a APISUNAT"}
+        else:
+            baja.estado = "error_envio"
+            error_msg = response.text
+            
+            print("\n❌ DETALLE DEL RECHAZO DE BAJA EN APISUNAT:")
+            print(f"Status Code: {response.status_code}")
+            print(f"Respuesta: {error_msg}\n")
+            
+            # 🔥 CORRECCIÓN: NO sobreescribimos observaciones_sunat para no perder el documentId original
+            db.commit()
+            
+            return {"exito": False, "error": f"Error de APISUNAT: {error_msg}"}
+
+    except Exception as e:
+        baja.estado = "error_conexion"
+        db.commit()
+        print(f"\n❌ ERROR DE CONEXIÓN CON APISUNAT AL ANULAR: {str(e)}\n")
+        return {"exito": False, "error": f"Fallo al conectar con APISUNAT: {str(e)}"}

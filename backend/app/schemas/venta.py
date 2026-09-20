@@ -47,6 +47,9 @@ class VentaOut(BaseModel):
     metodo_pago: Optional[MetodoPagoOut] = None
     fecha: datetime
     items: List[VentaDetalleOut] = []
+    
+    # 👇 ESTO PERMITE QUE REACT SEPA SI FUE BAJA O NOTA DE CRÉDITO 👇
+    observaciones_sunat: Optional[str] = None 
 
     class Config:
         from_attributes = True

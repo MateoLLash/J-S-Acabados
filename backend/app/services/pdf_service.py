@@ -15,9 +15,9 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 # ==========================================
 NEGRO = colors.HexColor("#1a1a1a")
 GRIS = colors.HexColor("#666666")
-GRIS_CLARO = colors.HexColor("#f2f2f2")
+GRIS_CLARO = colors.HexColor("#f8ece0") # Fondo crema claro para el recuadro "Documento que modifica"
 ACENTO = colors.HexColor("#2d6a4f")   # Verde de tu diseño
-
+NARANJA_BURDEOS = colors.HexColor("#c84b24") # Color del borde y título "DOCUMENTO QUE MODIFICA"
 
 def _linea(grosor=0.6, color=colors.HexColor("#cccccc"), espacio_antes=3, espacio_despues=3):
     return HRFlowable(width="100%", thickness=grosor, color=color,
@@ -33,7 +33,6 @@ _UNIDADES = ["", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO
 _DECENAS = ["", "", "VEINTE", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA"]
 _CENTENAS = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS",
              "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"]
-
 
 def _tres_digitos_a_letras(num: int) -> str:
     if num == 0:
@@ -54,7 +53,6 @@ def _tres_digitos_a_letras(num: int) -> str:
             partes.append(_DECENAS[d] + (f" Y {_UNIDADES[u]}" if u else ""))
     return " ".join(partes)
 
-
 def _entero_a_letras(n: int) -> str:
     if n == 0:
         return "CERO"
@@ -69,13 +67,11 @@ def _entero_a_letras(n: int) -> str:
         partes.append(_tres_digitos_a_letras(resto3))
     return " ".join(partes) if partes else "CERO"
 
-
 def _monto_a_legenda(total: float, moneda: str = "SOLES") -> str:
     total = round(float(total), 2)
     entero = int(total)
     centavos = int(round((total - entero) * 100))
     return f"SON {_entero_a_letras(entero)} CON {centavos:02d}/100 {moneda}"
-
 
 def _generar_qr(data: str, size_mm: float = 22) -> Image:
     qr = qrcode.QRCode(border=1, box_size=6)
@@ -129,8 +125,23 @@ def generar_pdf_comprobante(venta, items):
     )
     valor_style = ParagraphStyle(
         'Valor', fontName='Helvetica', fontSize=7.5,
-        textColor=NEGRO, leading=11,
+        textColor=NEGRO, alignment=TA_RIGHT, leading=11,
     )
+    
+    # Estilos para el bloque de modificación
+    titulo_modifica_style = ParagraphStyle(
+        'TituloModifica', fontName='Helvetica-Bold', fontSize=7.5,
+        textColor=NARANJA_BURDEOS, leading=11, spaceAfter=2
+    )
+    etiqueta_modifica_style = ParagraphStyle(
+        'EtiquetaMod', fontName='Helvetica', fontSize=7,
+        textColor=GRIS, leading=10,
+    )
+    valor_modifica_style = ParagraphStyle(
+        'ValorMod', fontName='Helvetica-Bold', fontSize=7,
+        textColor=NEGRO, alignment=TA_RIGHT, leading=10,
+    )
+
     celda_izq_style = ParagraphStyle('CeldaIzq', fontName='Helvetica', fontSize=6.8, leading=8.4)
     celda_der_style = ParagraphStyle('CeldaDer', fontName='Helvetica', fontSize=6.8, leading=8.4, alignment=TA_RIGHT)
     header_tabla_style = ParagraphStyle(
@@ -184,9 +195,12 @@ def generar_pdf_comprobante(venta, items):
     # ---------- 2. Recuadro con tipo de documento y número ----------
     tipo_comp = str(venta.tipo_documento_id).zfill(2)
     es_nota_credito = tipo_comp == "07"
+    es_nota_debito = tipo_comp == "08"
     
     if es_nota_credito:
         tipo_doc = "NOTA DE CRÉDITO ELECTRÓNICA"
+    elif es_nota_debito:
+        tipo_doc = "NOTA DE DÉBITO ELECTRÓNICA"
     elif tipo_comp == "01":
         tipo_doc = "FACTURA ELECTRÓNICA"
     else:
@@ -228,41 +242,66 @@ def generar_pdf_comprobante(venta, items):
         [Paragraph("Documento:", etiqueta_style), Paragraph(str(cliente_doc), valor_style)],
     ]
 
-    # Filas exclusivas para Notas de Crédito
-    if es_nota_credito:
-        doc_afectado = f"Comprobante Ref: {venta.documento_referencia_id}"
-        if getattr(venta, 'documento_referencia', None):
-            ref = venta.documento_referencia
-            tipo_ref = "Factura" if ref.tipo_comprobante == "factura" else "Boleta"
-            serie_ref = ref.serie or ("F001" if tipo_ref == "Factura" else "B001")
-            num_ref = str(ref.numero or ref.id).zfill(8)
-            doc_afectado = f"{tipo_ref} {serie_ref}-{num_ref}"
-
-        # Mapeo oficial de motivos de anulación en SUNAT
-        motivos_nc = {
-            "01": "Anulación de la operación",
-            "02": "Anulación por error en el RUC",
-            "03": "Corrección por error en la descripción",
-            "04": "Descuento global",
-            "05": "Descuento por ítem",
-            "06": "Devolución total",
-            "07": "Devolución por ítem",
-            "08": "Bonificación",
-            "09": "Disminución en el valor",
-            "10": "Otros Conceptos"
-        }
-        motivo_texto = motivos_nc.get(venta.motivo_nota_id, "Anulación de la operación")
-
-        filas_cliente.append([Paragraph("Doc. afectado:", etiqueta_style), Paragraph(doc_afectado, valor_style)])
-        filas_cliente.append([Paragraph("Motivo:", etiqueta_style), Paragraph(motivo_texto, valor_style)])
-
-    datos_tabla = Table(filas_cliente, colWidths=[24 * mm, 46 * mm])
+    datos_tabla = Table(filas_cliente, colWidths=[20 * mm, 50 * mm])
     datos_tabla.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
         ('TOPPADDING', (0, 0), (-1, -1), 2),
     ]))
     story.append(datos_tabla)
+
+    # ---------- RECUADRO ESPECIAL: DOCUMENTO QUE MODIFICA ----------
+    if es_nota_credito or es_nota_debito:
+        story.append(Spacer(1, 4))
+        
+        doc_afectado = "No especificado"
+        tipo_ref = "Documento"
+        fecha_ref = "-"
+        serie_num_ref = "0000-00000000"
+        
+        if getattr(venta, 'documento_referencia', None):
+            ref = venta.documento_referencia
+            tipo_ref = "Factura Electrónica (01)" if ref.tipo_comprobante == "factura" else "Boleta Electrónica (03)"
+            serie_ref = ref.serie or ("F001" if ref.tipo_comprobante == "factura" else "B001")
+            num_ref = str(ref.numero or ref.id).zfill(8)
+            serie_num_ref = f"{serie_ref}-{num_ref}"
+            fecha_ref = ref.fecha.strftime('%d/%m/%Y') if ref.fecha else "-"
+
+        motivos_dict = {
+            "01": "01 - Intereses por mora" if es_nota_debito else "01 - Anulación de la operación",
+            "02": "02 - Aumento en el valor" if es_nota_debito else "02 - Anulación por error en el RUC",
+            "03": "03 - Penalidades / Otros conceptos" if es_nota_debito else "03 - Corrección por error en la descripción",
+            "06": "06 - Devolución total" if es_nota_credito else "",
+        }
+        
+        codigo_motivo = venta.motivo_nota_id or "01"
+        tipo_nota_texto = motivos_dict.get(codigo_motivo, "Otros Conceptos")
+        sustento_texto = venta.observaciones_sunat or "Modificación de comprobante"
+
+        filas_modifica = [
+            [Paragraph("DOCUMENTO QUE MODIFICA", titulo_modifica_style), ""],
+            [Paragraph("Tipo:", etiqueta_modifica_style), Paragraph(tipo_ref, valor_modifica_style)],
+            [Paragraph("Serie - Número:", etiqueta_modifica_style), Paragraph(serie_num_ref, valor_modifica_style)],
+            [Paragraph("Fecha de emisión:", etiqueta_modifica_style), Paragraph(fecha_ref, valor_modifica_style)],
+            [Paragraph("Tipo de nota:", etiqueta_modifica_style), Paragraph(tipo_nota_texto, valor_modifica_style)],
+            [Paragraph("Motivo / Sustento:", etiqueta_modifica_style), Paragraph(sustento_texto, valor_modifica_style)],
+        ]
+
+        tabla_modifica = Table(filas_modifica, colWidths=[25 * mm, 45 * mm])
+        tabla_modifica.setStyle(TableStyle([
+            ('SPAN', (0, 0), (1, 0)), # Une la fila del título
+            ('BACKGROUND', (0, 0), (-1, -1), GRIS_CLARO), # Fondo crema
+            ('LINELEFT', (0, 0), (0, -1), 2.5, NARANJA_BURDEOS), # Línea lateral naranja
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        
+        story.append(tabla_modifica)
+    
+    story.append(Spacer(1, 4))
     story.append(_linea())
 
     # ---------- 4. Tabla de ítems ----------
@@ -278,7 +317,17 @@ def generar_pdf_comprobante(venta, items):
         cantidad = float(item.cantidad)
         precio_unit = float(item.precio_unitario)
         subtotal = round(cantidad * precio_unit, 2)
+        
+        # En caso de Nota de Débito/Crédito, la SUNAT suele exigir que la descripción empiece con el motivo
         desc = item.producto.nombre if item.producto else f"Prod #{item.producto_id}"
+        
+        if es_nota_debito or es_nota_credito:
+            motivo_limpio = tipo_nota_texto.split("-")[-1].strip().upper()
+            if getattr(venta, 'documento_referencia', None):
+                tipo_ref = "FACTURA" if venta.documento_referencia.tipo_comprobante == "factura" else "BOLETA"
+                serie_ref = venta.documento_referencia.serie or "B001"
+                num_ref = str(venta.documento_referencia.numero or venta.documento_referencia.id).zfill(8)
+                desc = f"{motivo_limpio} — {tipo_ref} {serie_ref}-{num_ref}"
 
         table_data.append([
             Paragraph(f"{cantidad:g}", celda_izq_style),
@@ -287,7 +336,7 @@ def generar_pdf_comprobante(venta, items):
             Paragraph(f"{subtotal:,.2f}", celda_der_style),
         ])
 
-    t = Table(table_data, colWidths=[9 * mm, 34 * mm, 13 * mm, 14 * mm], repeatRows=1)
+    t = Table(table_data, colWidths=[8 * mm, 35 * mm, 13 * mm, 14 * mm], repeatRows=1)
     estilo_tabla = [
         ('BACKGROUND', (0, 0), (-1, 0), ACENTO),
         ('TOPPADDING', (0, 0), (-1, -1), 3),
@@ -334,7 +383,13 @@ def generar_pdf_comprobante(venta, items):
         pass  # si falla la generación del QR, el comprobante igual se genera
 
     story.append(Spacer(1, 4))
-    texto_repr = "Representación impresa de la nota de crédito electrónica." if es_nota_credito else "Representación impresa del comprobante electrónico."
+    
+    if es_nota_credito:
+        texto_repr = "Representación impresa de la nota de crédito electrónica."
+    elif es_nota_debito:
+        texto_repr = "Representación impresa de la nota de débito electrónica."
+    else:
+        texto_repr = "Representación impresa del comprobante electrónico."
     
     story.append(Paragraph(texto_repr, footer_style))
     story.append(Paragraph("Consulte su documento en apisunat.com", footer_bold_style))

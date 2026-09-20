@@ -14,6 +14,7 @@ from app.services.venta_service import crear_venta
 from app.services.venta_sunat_service import procesar_envio_sunat
 from app.services.pdf_service import generar_pdf_comprobante
 from app.services.nota_credito_service import procesar_anulacion
+from app.services.nota_debito_service import procesar_nota_debito
 
 router = APIRouter(prefix="/ventas", tags=["ventas"])
 
@@ -22,14 +23,20 @@ class AnulacionRequest(BaseModel):
     codigo: str
     motivo: str
 
+class NotaDebitoRequest(BaseModel):
+    codigo: str
+    motivo: str
+    monto: float
 
 # =======================================================
 # Función para Auto-Guardar PDFs en el Servidor
 # =======================================================
 def guardar_pdf_local(venta_id: int, db: Session, es_nc: bool = False):
     try:
-        # 1. Obtener la venta con todos sus items
+        # 1. Obtener la venta con todos sus items y relaciones
         venta = db.query(Venta).options(
+            joinedload(Venta.cliente),
+            joinedload(Venta.metodo_pago),
             selectinload(Venta.items).joinedload(VentaDetalle.producto)
         ).filter(Venta.id == venta_id).first()
         
@@ -73,11 +80,11 @@ def guardar_pdf_local(venta_id: int, db: Session, es_nc: bool = False):
         print(f"⚠️ Error guardando PDF en el servidor local: {e}")
 
 
+# 🔥 CORRECCIÓN: Se eliminó el filtro tipo_documento_id.in_(["01", "03"]) para mostrar NC y ND
 @router.get("/", response_model=List[VentaOut])
 def listar_ventas(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return (
         db.query(Venta)
-        .filter(Venta.tipo_documento_id.in_(["01", "03"])) # Muestra solo Facturas y Boletas
         .options(
             joinedload(Venta.cliente),
             joinedload(Venta.metodo_pago),
@@ -136,9 +143,34 @@ def anular_venta(venta_id: int, data: AnulacionRequest, db: Session = Depends(ge
     return {"mensaje": "Venta dada de baja correctamente (Mismo día).", "detalles": resultado}
 
 
+@router.get("/{venta_id}/baja-info")
+def obtener_info_baja(venta_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    venta = db.query(Venta).filter(Venta.id == venta_id).first()
+    if not venta:
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+    
+    return {
+        "id": venta.id,
+        "serie": venta.serie,
+        "numero": venta.numero,
+        "fecha_emision": venta.fecha,
+        "total": venta.total,
+        "estado": venta.estado_sunat,
+        "detalle_baja": venta.observaciones_sunat or "Comunicación de Baja enviada y aceptada dentro del plazo de los 7 días calendario."
+    }
+
+
 @router.get("/{venta_id}/pdf")
 def ver_pdf_venta(venta_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    venta = db.query(Venta).filter(Venta.id == venta_id).first()
+    venta = (
+        db.query(Venta)
+        .options(
+            joinedload(Venta.cliente),
+            joinedload(Venta.metodo_pago),
+            selectinload(Venta.items).joinedload(VentaDetalle.producto)
+        )
+        .filter(Venta.id == venta_id).first()
+    )
     if not venta:
         raise HTTPException(status_code=404, detail="Venta no encontrada")
     
@@ -154,7 +186,15 @@ def ver_pdf_venta(venta_id: int, db: Session = Depends(get_db), _=Depends(get_cu
 
 @router.get("/{venta_id}/pdf/descargar")
 def descargar_pdf_venta(venta_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    venta = db.query(Venta).filter(Venta.id == venta_id).first()
+    venta = (
+        db.query(Venta)
+        .options(
+            joinedload(Venta.cliente),
+            joinedload(Venta.metodo_pago),
+            selectinload(Venta.items).joinedload(VentaDetalle.producto)
+        )
+        .filter(Venta.id == venta_id).first()
+    )
     if not venta:
         raise HTTPException(status_code=404, detail="Venta no encontrada")
     
@@ -171,10 +211,18 @@ def descargar_pdf_venta(venta_id: int, db: Session = Depends(get_db), _=Depends(
 @router.get("/{venta_id}/pdf-nc")
 def ver_pdf_nc_venta(venta_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
     # Busca la Nota de Crédito utilizando el ID de la factura original
-    nc = db.query(Venta).filter(
-        Venta.documento_referencia_id == venta_id, 
-        Venta.tipo_documento_id == '07'
-    ).first()
+    nc = (
+        db.query(Venta)
+        .options(
+            joinedload(Venta.cliente),
+            joinedload(Venta.metodo_pago),
+            selectinload(Venta.items).joinedload(VentaDetalle.producto)
+        )
+        .filter(
+            Venta.documento_referencia_id == venta_id, 
+            Venta.tipo_documento_id == '07'
+        ).first()
+    )
     
     if not nc:
         raise HTTPException(status_code=404, detail="Nota de Crédito no encontrada para esta venta")
@@ -187,3 +235,11 @@ def ver_pdf_nc_venta(venta_id: int, db: Session = Depends(get_db), _=Depends(get
         media_type="application/pdf",
         headers={"Content-Disposition": f"inline; filename={nombre_archivo}"}
     )
+
+
+@router.post("/{venta_id}/debito")
+def generar_nota_debito(venta_id: int, request: NotaDebitoRequest, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    resultado = procesar_nota_debito(venta_id, request.codigo, request.motivo, request.monto, db, current_user.id)
+    if not resultado["exito"]:
+        raise HTTPException(status_code=400, detail=resultado.get("error", "Error desconocido"))
+    return resultado

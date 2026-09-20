@@ -3,12 +3,9 @@ import { styles } from './Ventas.styles';
 import { apiFetch } from '../../utils/api';
 import { 
   ShoppingCart, Trash2, Plus, Minus, 
-  User, Receipt, CreditCard, CheckCircle2, Check, UserPlus, FileDown, Eye, X, Ban, ChevronDown
+  User, Receipt, CreditCard, CheckCircle2, Check, UserPlus, FileDown, Eye, X, Ban, ChevronDown, CircleDollarSign
 } from 'lucide-react';
 
-// ==========================================
-// Constantes para validación de Clientes
-// ==========================================
 const PAISES = [
   { codigo: "PE", nombre: "Perú", prefijo: "+51", digitos: 9, empiezaCon: ["9"] },
   { codigo: "CO", nombre: "Colombia", prefijo: "+57", digitos: 10, empiezaCon: ["3"] },
@@ -34,7 +31,7 @@ export default function Ventas() {
   const [clientes, setClientes] = useState([]);
   const [metodosPago, setMetodosPago] = useState([]);
   const [carrito, setCarrito] = useState([]);
-  const [vista, setVista] = useState('pos'); // 'pos' o 'historial'
+  const [vista, setVista] = useState('pos');
   const [busqueda, setBusqueda] = useState('');
   const [clienteId, setClienteId] = useState('');
   const [tipoComprobante, setTipoComprobante] = useState('boleta');
@@ -45,24 +42,31 @@ export default function Ventas() {
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
   const [descargandoId, setDescargandoId] = useState(null);
 
-  // Estados para el Modal Visor de PDF
   const [pdfUrlModal, setPdfUrlModal] = useState(null);
   const [cargandoPdfModal, setCargandoPdfModal] = useState(false);
 
-  // Estados para el Modal de Anulación Inteligente (Baja vs NC)
   const [modalAnular, setModalAnular] = useState(false);
   const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
-  const [tipoAnulacion, setTipoAnulacion] = useState('BAJA'); // 'BAJA' o 'NC'
-  const [motivoSeleccionado, setMotivoSeleccionado] = useState('RA'); // 'RA' o código de Catálogo 09
+  const [tipoAnulacion, setTipoAnulacion] = useState('BAJA');
+  const [motivoSeleccionado, setMotivoSeleccionado] = useState('RA');
   const [descripcionMotivo, setDescripcionMotivo] = useState('');
   const [confirmadoCheckbox, setConfirmadoCheckbox] = useState(false);
   const [anulando, setAnulando] = useState(false);
 
+  const [modalBajaInfo, setModalBajaInfo] = useState(false);
+  const [datosBaja, setDatosBaja] = useState(null);
+  const [cargandoBajaInfo, setCargandoBajaInfo] = useState(false);
+
+  // Estados para Nota de Débito
+  const [modalDebito, setModalDebito] = useState(false);
+  const [ventaDebitoSel, setVentaDebitoSel] = useState(null);
+  const [motivoDebito, setMotivoDebito] = useState('03'); // Penalidades / Otros
+  const [descDebito, setDescDebito] = useState('');
+  const [montoDebito, setMontoDebito] = useState('');
+  const [procesandoDebito, setProcesandoDebito] = useState(false);
+
   const [showModal, setShowModal] = useState(false);
 
-  // ==========================================
-  // Estados y lógica para Nuevo Cliente Modal
-  // ==========================================
   const [modalCliente, setModalCliente] = useState(false);
   const [tipoDocCliente, setTipoDocCliente] = useState("DNI");
   const [nombreCliente, setNombreCliente] = useState("");
@@ -95,7 +99,6 @@ export default function Ventas() {
   };
 
   const formClienteValido = !erroresCliente.nombre && !erroresCliente.documento && !erroresCliente.telefono;
-
   const marcarTocadoCliente = (campo) => setTocadoCliente((prev) => ({ ...prev, [campo]: true }));
 
   const token = localStorage.getItem('token') || '';
@@ -121,9 +124,6 @@ export default function Ventas() {
     cargarClientesYMetodos();
   }, []);
 
-  // ==========================================
-  // 🚀 LÓGICA AUTOMÁTICA: DNI -> Boleta | RUC -> Factura
-  // ==========================================
   useEffect(() => {
     const clienteActivo = clientes.find((c) => String(c.id) === String(clienteId));
     if (clienteActivo) {
@@ -140,7 +140,6 @@ export default function Ventas() {
 
   const clienteActivo = clientes.find((c) => String(c.id) === String(clienteId));
   const esClienteRUC = clienteActivo && clienteActivo.documento && clienteActivo.documento.length === 11;
-
 
   const handleGuardarNuevoCliente = async (e) => {
     e.preventDefault();
@@ -336,13 +335,26 @@ export default function Ventas() {
       const response = await fetch(`http://localhost:8000/ventas/${ventaIdOriginal}/pdf-nc`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (!response.ok) throw new Error('No se encontró el PDF de la Nota de Crédito');
+      if (!response.ok) throw new Error('No se encontró el PDF de la Nota');
       const blob = await response.blob();
       setPdfUrlModal(window.URL.createObjectURL(blob));
     } catch (err) {
-      setError('Error al visualizar la Nota de Crédito.');
+      setError('Error al visualizar el comprobante referenciado.');
     } finally {
       setCargandoPdfModal(false);
+    }
+  };
+
+  const handleVerBajaInfo = async (ventaId) => {
+    setCargandoBajaInfo(true);
+    try {
+      const data = await apiFetch(`/ventas/${ventaId}/baja-info`);
+      setDatosBaja(data);
+      setModalBajaInfo(true);
+    } catch (err) {
+      setError('Error al obtener la información de la baja.');
+    } finally {
+      setCargandoBajaInfo(false);
     }
   };
 
@@ -353,19 +365,14 @@ export default function Ventas() {
     setPdfUrlModal(null);
   };
 
-  // ==========================================
-  // 🚀 APERTURA INTELIGENTE DEL MODAL DE ANULACIÓN (REGLA 7 DÍAS SUNAT)
-  // ==========================================
   const abrirModalAnular = (v) => {
     setVentaSeleccionada(v);
-    
-    // Calcular días transcurridos desde la emisión
     const fechaVenta = new Date(v.fecha);
     const hoy = new Date();
     const diferenciaDias = Math.floor((hoy - fechaVenta) / (1000 * 60 * 60 * 24));
+    const esBoleta = v.tipo_comprobante?.toLowerCase() === 'boleta' || String(v.tipo_documento_id).padStart(2, '0') === '03';
 
-    // Si está dentro de los 7 días, seleccionamos Baja por defecto. Si no, Nota de Crédito.
-    if (diferenciaDias <= 7) {
+    if (diferenciaDias <= 7 && !esBoleta) {
       setTipoAnulacion('BAJA');
       setMotivoSeleccionado('RA');
     } else {
@@ -397,6 +404,37 @@ export default function Ventas() {
       setError('Error al anular comprobante: ' + err.message);
     } finally {
       setAnulando(false);
+    }
+  };
+
+  const abrirModalDebito = (v) => {
+    setVentaDebitoSel(v);
+    setMotivoDebito('03'); // Por defecto Penalidades
+    setDescDebito('');
+    setMontoDebito('');
+    setModalDebito(true);
+  };
+
+  const handleConfirmarDebito = async (e) => {
+    e.preventDefault();
+    if (!ventaDebitoSel || !montoDebito || isNaN(montoDebito) || Number(montoDebito) <= 0) return;
+    setProcesandoDebito(true);
+    try {
+      await apiFetch(`/ventas/${ventaDebitoSel.id}/debito`, {
+        method: 'POST',
+        body: JSON.stringify({
+          codigo: motivoDebito,
+          motivo: descDebito.trim() || 'Recargo / Penalidad',
+          monto: Number(montoDebito)
+        })
+      });
+      setModalDebito(false);
+      setVentaDebitoSel(null);
+      cargarHistorial();
+    } catch (err) {
+      setError('Error al generar Nota de Débito: ' + err.message);
+    } finally {
+      setProcesandoDebito(false);
     }
   };
 
@@ -480,21 +518,26 @@ export default function Ventas() {
                 </tr>
               </thead>
               <tbody>
-                {ventas.length === 0 ? (
+              {ventas.length === 0 ? (
                   <tr><td colSpan="8" style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>Aún no hay ventas registradas.</td></tr>
                 ) : ventas.map((v) => {
                   const esNotaCredito = v.tipo_documento_id === '07';
+                  const esNotaDebito = v.tipo_documento_id === '08';
                   const estaAnulado = v.estado_sunat === 'anulado';
+                  const esBajaReal = v.observaciones_sunat && (v.observaciones_sunat.includes("BAJA_RA") || v.observaciones_sunat.includes("BAJA SUNAT"));
+                  const esAnuladoPorNC = estaAnulado && !esBajaReal;
 
                   return (
                     <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: estaAnulado ? '#f8fafc' : '#ffffff' }}>
                       <td style={{ padding: '14px 16px', fontWeight: '600', color: estaAnulado ? '#94a3b8' : '#0f172a' }}>
-                        #{v.id} {esNotaCredito && <span style={{ fontSize: '10px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', marginLeft: '4px' }}>NC</span>}
+                        #{v.id} 
+                        {esNotaCredito && <span style={{ fontSize: '10px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', marginLeft: '4px' }}>NC</span>}
+                        {esNotaDebito && <span style={{ fontSize: '10px', backgroundColor: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px', marginLeft: '4px' }}>ND</span>}
                       </td>
                       <td style={{ padding: '14px 16px', color: '#475569' }}>{formatearFechaSegura(v.fecha)}</td>
                       <td style={{ padding: '14px 16px' }}>{v.cliente?.nombre || (v.cliente_id ? `Cliente #${v.cliente_id}` : '-')}</td>
                       <td style={{ padding: '14px 16px', textTransform: 'capitalize' }}>
-                        {esNotaCredito ? 'Nota de Crédito' : (v.tipo_comprobante || 'Boleta')}
+                        {esNotaCredito ? 'Nota de Crédito' : esNotaDebito ? 'Nota de Débito' : (v.tipo_comprobante || 'Boleta')}
                         {v.serie && <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{v.serie}-{String(v.numero || v.id).padStart(8, '0')}</span>}
                       </td>
                       <td style={{ padding: '14px 16px', textTransform: 'capitalize' }}>{v.metodo_pago?.nombre || '-'}</td>
@@ -506,7 +549,7 @@ export default function Ventas() {
                           ...estiloEstadoSunat(v.estado_sunat),
                           fontSize: '11px', fontWeight: '600', padding: '3px 10px', borderRadius: '12px', textTransform: 'capitalize'
                         }}>
-                          {estaAnulado ? 'Anulado (Con NC)' : (v.estado_sunat || 'pendiente')}
+                          {estaAnulado ? (esBajaReal ? 'Anulado (Baja RA)' : 'Anulado (Con NC)') : (v.estado_sunat || 'pendiente')}
                         </span>
                       </td>
                       <td style={{ padding: '14px 16px', textAlign: 'center' }}>
@@ -528,27 +571,51 @@ export default function Ventas() {
                             <FileDown size={13} /> Descargar
                           </button>
 
-                          {estaAnulado && (
+                          {esAnuladoPorNC && (
                             <button
                               type="button"
                               onClick={(e) => { e.preventDefault(); handleVerNC(v.id); }}
                               disabled={cargandoPdfModal}
                               style={{ background: '#e0f2fe', border: '1px solid #bae6fd', color: '#0369a1', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', marginLeft: '4px', transition: 'all 0.2s' }}
-                              title="Visualizar la Nota de Crédito Electrónica de esta anulación"
+                              title="Visualizar la Nota de Crédito"
                             >
                               <Receipt size={12} /> Ver NC
                             </button>
                           )}
 
-                          {!estaAnulado && !esNotaCredito && (
+                          {esBajaReal && (
                             <button
                               type="button"
-                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); abrirModalAnular(v); }}
-                              style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px', padding: 0, marginLeft: '4px' }}
-                              title="Anular comprobante"
+                              onClick={(e) => { e.preventDefault(); handleVerBajaInfo(v.id); }}
+                              disabled={cargandoBajaInfo}
+                              style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', marginLeft: '4px' }}
+                              title="Ver constancia de Comunicación de Baja"
                             >
-                              <Ban size={13} /> Anular
+                              <Ban size={12} /> Ver Baja RA
                             </button>
+                          )}
+
+                          {/* BOTONES ACCIÓN PARA DOCUMENTOS VÁLIDOS */}
+                          {!estaAnulado && !esNotaCredito && !esNotaDebito && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); abrirModalAnular(v); }}
+                                style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px', padding: 0, marginLeft: '4px' }}
+                                title="Anular comprobante"
+                              >
+                                <Ban size={13} /> Anular
+                              </button>
+                              
+                              <button
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); abrirModalDebito(v); }}
+                                style={{ background: '#ffedd5', border: '1px solid #fed7aa', color: '#c2410c', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', marginLeft: '4px' }}
+                                title="Emitir Nota de Débito (Cobro Adicional)"
+                              >
+                                <Plus size={12} /> Débito
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -744,9 +811,7 @@ export default function Ventas() {
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
-      {/* 🚀 MODAL VISOR EMERGENTE DE PDF                                */}
-      {/* ------------------------------------------------------------- */}
+      {/* 🚀 MODAL VISOR EMERGENTE DE PDF */}
       {pdfUrlModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
           <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', width: '100%', maxWidth: '850px', height: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
@@ -763,22 +828,16 @@ export default function Ventas() {
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
-      {/* 🚀 MODAL DE ANULACIÓN INTELIGENTE (COMBOBOX RESTRINGIDO SUNAT) */}
-      {/* ------------------------------------------------------------- */}
+      {/* 🚀 MODAL DE ANULACIÓN INTELIGENTE (NC / BAJA) */}
       {modalAnular && ventaSeleccionada && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '28px', width: '440px', maxWidth: '95vw', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', position: 'relative', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '90vh', overflowY: 'auto' }}>
-            
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '28px', width: '440px', maxWidth: '95vw', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', position: 'relative', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <button type="button" onClick={() => setModalAnular(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
               <X size={20} />
             </button>
-
             <div>
               <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Anular comprobante</h3>
-              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
-                Esta acción comunica directamente con SUNAT y no se puede deshacer.
-              </p>
+              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Esta acción comunica directamente con SUNAT y no se puede deshacer.</p>
             </div>
 
             <div style={{ backgroundColor: '#f8fafc', borderRadius: '12px', padding: '14px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
@@ -789,34 +848,12 @@ export default function Ventas() {
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Cliente</span>
-                <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                  {ventaSeleccionada.cliente?.nombre || 'Cliente General'}
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Fecha emisión</span>
-                <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                  {formatearFechaSegura(ventaSeleccionada.fecha)}
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>Total</span>
-                <span style={{ fontWeight: 600, color: '#0f172a' }}>
-                  S/ {Number(ventaSeleccionada.total || 0).toFixed(2)}
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#64748b' }}>Estado SUNAT</span>
-                <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 10px', borderRadius: '12px', backgroundColor: '#ecfdf5', color: '#047857', textTransform: 'capitalize' }}>
-                  {ventaSeleccionada.estado_sunat || 'Enviado'}
-                </span>
+                <span style={{ fontWeight: 600, color: '#0f172a' }}>S/ {Number(ventaSeleccionada.total || 0).toFixed(2)}</span>
               </div>
             </div>
 
             <form onSubmit={handleConfirmarAnulacion} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              
-              {/* COMBOBOX DE TIPO DE ANULACIÓN CON RESTRICCIÓN DE 7 DÍAS SUNAT */}
               <div>
                 <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Método de anulación</label>
                 <select
@@ -824,11 +861,7 @@ export default function Ventas() {
                   onChange={(e) => {
                     const val = e.target.value;
                     setTipoAnulacion(val);
-                    if (val === 'BAJA') {
-                      setMotivoSeleccionado('RA');
-                    } else {
-                      setMotivoSeleccionado('01');
-                    }
+                    setMotivoSeleccionado(val === 'BAJA' ? 'RA' : '01');
                   }}
                   style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', outline: 'none', cursor: 'pointer', fontWeight: '600' }}
                 >
@@ -837,25 +870,25 @@ export default function Ventas() {
                     const hoy = new Date();
                     const diferenciaDias = Math.floor((hoy - fechaVenta) / (1000 * 60 * 60 * 24));
                     const plazoVencido = diferenciaDias > 7;
+                    const esBoleta = ventaSeleccionada.tipo_comprobante?.toLowerCase() === 'boleta' || String(ventaSeleccionada.tipo_documento_id).padStart(2, '0') === '03';
 
                     return (
                       <>
-                        <option value="BAJA" disabled={plazoVencido}>
-                          {plazoVencido ? '❌ Comunicación de Baja (Bloqueado: > 7 días SUNAT)' : '⚡ Comunicación de Baja (RA - Plazo vigente)'}
+                        <option value="BAJA" disabled={plazoVencido || esBoleta}>
+                          {esBoleta ? '❌ Comunicación de Baja (SUNAT no lo permite para Boletas)' : 
+                           plazoVencido ? '❌ Comunicación de Baja (Bloqueado: > 7 días SUNAT)' : 
+                           '⚡ Comunicación de Baja (RA - Plazo vigente)'}
                         </option>
-                        <option value="NC">
-                          📄 Nota de Crédito Electrónica (Catálogo 09)
-                        </option>
+                        <option value="NC">📄 Nota de Crédito Electrónica (Catálogo 09)</option>
                       </>
                     );
                   })()}
                 </select>
               </div>
 
-              {/* Dependiendo de la selección mostramos Catálogo 09 o Nota Informativa de Baja */}
               {tipoAnulacion === 'NC' ? (
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Motivo Nota de Crédito (Catálogo SUNAT No. 09)</label>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Motivo Nota de Crédito</label>
                   <select
                     value={motivoSeleccionado}
                     onChange={(e) => setMotivoSeleccionado(e.target.value)}
@@ -864,24 +897,13 @@ export default function Ventas() {
                     <option value="01">01 - Anulación de la operación</option>
                     <option value="02">02 - Anulación por error en el RUC</option>
                     <option value="03">03 - Corrección por error en la descripción</option>
-                    <option value="04">04 - Descuento global</option>
-                    <option value="05">05 - Descuento por ítem</option>
                     <option value="06">06 - Devolución total</option>
-                    <option value="07">07 - Devolución por ítem</option>
-                    <option value="08">08 - Bonificación</option>
-                    <option value="09">09 - Disminución en el valor</option>
-                    <option value="10">10 - Otros Conceptos</option>
                   </select>
                 </div>
               ) : (
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Código SUNAT</label>
-                  <input
-                    type="text"
-                    value="RA - Comunicación de Baja Electrónica"
-                    readOnly
-                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#f1f5f9', color: '#475569', outline: 'none', boxSizing: 'border-box' }}
-                  />
+                  <input type="text" value="RA - Comunicación de Baja Electrónica" readOnly style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#f1f5f9', color: '#475569', outline: 'none' }} />
                 </div>
               )}
 
@@ -889,45 +911,22 @@ export default function Ventas() {
                 <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Descripción del motivo</label>
                 <textarea
                   rows={3}
-                  placeholder={tipoAnulacion === 'BAJA' ? "Ej. Error de digitación en el comprobante..." : "Detalles adicionales internos..."}
+                  placeholder="Detalles adicionales internos..."
                   value={descripcionMotivo}
                   onChange={(e) => setDescripcionMotivo(e.target.value)}
                   required={tipoAnulacion === 'BAJA'}
-                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none', boxSizing: 'border-box', resize: 'none' }}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none', resize: 'none' }}
                 />
               </div>
 
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '12px', color: '#334155', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  id="chkConfirmar"
-                  checked={confirmadoCheckbox}
-                  onChange={(e) => setConfirmadoCheckbox(e.target.checked)}
-                  style={{ marginTop: '2px', cursor: 'pointer' }}
-                />
-                <label htmlFor="chkConfirmar" style={{ cursor: 'pointer' }}>
-                  Confirmo que los datos son correctos y autorizo la anulación ante SUNAT.
-                </label>
+                <input type="checkbox" id="chkConfirmar" checked={confirmadoCheckbox} onChange={(e) => setConfirmadoCheckbox(e.target.checked)} style={{ marginTop: '2px', cursor: 'pointer' }} />
+                <label htmlFor="chkConfirmar" style={{ cursor: 'pointer' }}>Confirmo que los datos son correctos y autorizo el envío a SUNAT.</label>
               </div>
 
               <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-                <button
-                  type="button"
-                  onClick={() => setModalAnular(false)}
-                  style={{ flex: 1, backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={!confirmadoCheckbox || anulando}
-                  style={{
-                    flex: 1,
-                    backgroundColor: !confirmadoCheckbox || anulando ? '#fca5a5' : '#dc2626',
-                    color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: '600',
-                    cursor: !confirmadoCheckbox || anulando ? 'not-allowed' : 'pointer', fontSize: '14px'
-                  }}
-                >
+                <button type="button" onClick={() => setModalAnular(false)} style={{ flex: 1, backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>Cancelar</button>
+                <button type="submit" disabled={!confirmadoCheckbox || anulando} style={{ flex: 1, backgroundColor: !confirmadoCheckbox || anulando ? '#fca5a5' : '#dc2626', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: !confirmadoCheckbox || anulando ? 'not-allowed' : 'pointer', fontSize: '14px' }}>
                   {anulando ? 'Procesando...' : 'Confirmar Anulación'}
                 </button>
               </div>
@@ -936,159 +935,152 @@ export default function Ventas() {
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
-      {/* 🚀 MODAL DE ÉXITO DE VENTA                                     */}
-      {/* ------------------------------------------------------------- */}
-      {showModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div style={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '16px', padding: '28px 24px', width: '340px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '54px', height: '54px', borderRadius: '50%', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid #059669', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
-              <Check size={28} strokeWidth={2.5} />
-            </div>
-            <div>
-              <h3 style={{ margin: 0, color: '#ffffff', fontSize: '18px', fontWeight: '700' }}>¡Venta completada!</h3>
-              <p style={{ margin: '6px 0 0 0', color: '#9ca3af', fontSize: '13px' }}>La venta fue registrada correctamente en el sistema.</p>
-            </div>
-            <button type="button" onClick={() => setShowModal(false)} style={{ marginTop: '8px', width: '100%', padding: '10px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}>
-              Aceptar
+      {/* 🚀 MODAL DE NOTA DE DÉBITO */}
+      {modalDebito && ventaDebitoSel && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '28px', width: '440px', maxWidth: '95vw', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', position: 'relative', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <button type="button" onClick={() => setModalDebito(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+              <X size={20} />
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------- */}
-      {/* 🚀 MODAL ALTA RÁPIDA DE CLIENTE CON VALIDACIÓN AVANZADA        */}
-      {/* ------------------------------------------------------------- */}
-      {modalCliente && (
-        <div onClick={() => setModalCliente(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: '#fff', borderRadius: '16px', width: '448px', maxWidth: '92vw', padding: '28px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', position: 'relative' }}>
-            
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#0f172a' }}>Nuevo cliente</h2>
-              <button type="button" onClick={() => setModalCliente(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0 }}>
-                <X size={20} />
-              </button>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Emitir Nota de Débito</h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Genera un cobro adicional sobre el comprobante original.</p>
             </div>
 
-            <form onSubmit={handleGuardarNuevoCliente}>
-              {errorCliente && (
-                <div style={{ backgroundColor: '#fef2f2', color: '#b91c1c', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px', border: '1px solid #fecaca' }}>
-                  {errorCliente}
-                </div>
-              )}
+            <div style={{ backgroundColor: '#f8fafc', borderRadius: '12px', padding: '14px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Comprobante Base</span>
+                <span style={{ fontWeight: 600, color: '#0f172a', textTransform: 'capitalize' }}>
+                  {ventaDebitoSel.serie || 'F001'}-{String(ventaDebitoSel.numero || ventaDebitoSel.id).padStart(8, '0')}
+                </span>
+              </div>
+            </div>
 
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>Tipo de documento</label>
+            <form onSubmit={handleConfirmarDebito} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Motivo SUNAT (Catálogo 10)</label>
+                <select
+                  value={motivoDebito}
+                  onChange={(e) => setMotivoDebito(e.target.value)}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', outline: 'none', cursor: 'pointer', fontWeight: '500' }}
+                >
+                  <option value="03">03 - Penalidades / Otros conceptos</option>
+                  <option value="01">01 - Intereses por mora</option>
+                  <option value="02">02 - Aumento en el valor</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Descripción del cobro</label>
+                <input
+                  type="text"
+                  placeholder="Ej. Cobro adicional por flete de envío"
+                  value={descDebito}
+                  onChange={(e) => setDescDebito(e.target.value)}
+                  required
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Monto a cobrar (S/)</label>
                 <div style={{ position: 'relative' }}>
-                  <select 
-                    value={tipoDocCliente} 
-                    onChange={(e) => { 
-                      setTipoDocCliente(e.target.value); 
-                      setDocumentoCliente(''); 
-                      setTocadoCliente(prev => ({...prev, documento: false})); 
-                    }} 
-                    style={{ width: '100%', appearance: 'none', padding: '10px 36px 10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', color: '#0f172a', outline: 'none', backgroundColor: '#fff', cursor: 'pointer' }}
-                  >
-                    <option value="DNI">DNI</option>
-                    <option value="RUC">RUC</option>
-                  </select>
-                  <ChevronDown size={16} color="#94a3b8" style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>{configDoc.campoNombre}</label>
-                <input 
-                  type="text" 
-                  value={nombreCliente} 
-                  onChange={(e) => setNombreCliente(e.target.value)} 
-                  onBlur={() => marcarTocadoCliente('nombre')} 
-                  placeholder={tipoDocCliente === "DNI" ? "Ej. Ana Torres Ríos" : "Ej. Comercial Andina S.A.C."} 
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: `1px solid ${tocadoCliente.nombre && erroresCliente.nombre ? '#f87171' : '#cbd5e1'}`, fontSize: '14px', color: '#0f172a', boxSizing: 'border-box', outline: 'none' }} 
-                />
-                {tocadoCliente.nombre && erroresCliente.nombre && (
-                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#ef4444' }}>{erroresCliente.nombre}</p>
-                )}
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>{configDoc.label}</label>
-                <input 
-                  type="text" 
-                  inputMode="numeric" 
-                  value={documentoCliente} 
-                  onChange={(e) => { 
-                    const digitos = soloDigitos(e.target.value).slice(0, configDoc.digitos); 
-                    setDocumentoCliente(digitos); 
-                  }} 
-                  onBlur={() => marcarTocadoCliente('documento')} 
-                  placeholder={tipoDocCliente === "DNI" ? "8 dígitos" : "11 dígitos"} 
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: `1px solid ${tocadoCliente.documento && erroresCliente.documento ? '#f87171' : '#cbd5e1'}`, fontSize: '14px', color: '#0f172a', boxSizing: 'border-box', outline: 'none' }} 
-                />
-                <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  {tocadoCliente.documento && erroresCliente.documento ? (
-                    <p style={{ margin: 0, fontSize: '12px', color: '#ef4444' }}>{erroresCliente.documento}</p>
-                  ) : (
-                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>{documentoCliente.length}/{configDoc.digitos} dígitos</span>
-                  )}
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>Teléfono</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <div style={{ position: 'relative', flexShrink: 0 }}>
-                    <select 
-                      value={paisCodigoCliente} 
-                      onChange={(e) => { 
-                        setPaisCodigoCliente(e.target.value); 
-                        setTelefonoCliente(''); 
-                        setTocadoCliente(prev => ({...prev, telefono: false})); 
-                      }} 
-                      style={{ height: '100%', appearance: 'none', padding: '10px 32px 10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', color: '#0f172a', outline: 'none', backgroundColor: '#fff', cursor: 'pointer' }}
-                    >
-                      {PAISES.map((p) => (
-                        <option key={p.codigo} value={p.codigo}>{p.prefijo} {p.codigo}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} color="#94a3b8" style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-                  </div>
-                  <input 
-                    type="text" 
-                    inputMode="numeric" 
-                    value={telefonoCliente} 
-                    onChange={(e) => { 
-                      const digitos = soloDigitos(e.target.value).slice(0, pais.digitos); 
-                      setTelefonoCliente(digitos); 
-                    }} 
-                    onBlur={() => marcarTocadoCliente('telefono')} 
-                    placeholder={`${pais.digitos} dígitos`} 
-                    style={{ flex: 1, minWidth: 0, padding: '10px 14px', borderRadius: '8px', border: `1px solid ${tocadoCliente.telefono && erroresCliente.telefono ? '#f87171' : '#cbd5e1'}`, fontSize: '14px', color: '#0f172a', boxSizing: 'border-box', outline: 'none' }} 
+                  <CircleDollarSign size={16} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.1"
+                    placeholder="0.00"
+                    value={montoDebito}
+                    onChange={(e) => setMontoDebito(e.target.value)}
+                    required
+                    style={{ width: '100%', padding: '10px 10px 10px 32px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', outline: 'none', boxSizing: 'border-box', fontWeight: '600' }}
                   />
                 </div>
-                <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  {tocadoCliente.telefono && erroresCliente.telefono ? (
-                    <p style={{ margin: 0, fontSize: '12px', color: '#ef4444' }}>{erroresCliente.telefono}</p>
-                  ) : (
-                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>{telefonoCliente.length}/{pais.digitos} dígitos · {pais.nombre}</span>
-                  )}
-                </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button type="button" onClick={() => setModalCliente(false)} style={{ backgroundColor: '#f1f5f9', color: '#334155', border: 'none', padding: '10px 16px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
-                  Cancelar
-                </button>
-                <button type="submit" disabled={guardandoCliente} style={{ backgroundColor: '#1e3a8a', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px', opacity: guardandoCliente ? 0.7 : 1 }}>
-                  {guardandoCliente ? 'Guardando...' : 'Crear cliente'}
+              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                <button type="button" onClick={() => setModalDebito(false)} style={{ flex: 1, backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>Cancelar</button>
+                <button type="submit" disabled={procesandoDebito || !montoDebito} style={{ flex: 1, backgroundColor: procesandoDebito || !montoDebito ? '#fdba74' : '#ea580c', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: procesandoDebito || !montoDebito ? 'not-allowed' : 'pointer', fontSize: '14px' }}>
+                  {procesandoDebito ? 'Emitiendo...' : 'Generar Débito'}
                 </button>
               </div>
             </form>
-
           </div>
         </div>
       )}
 
+      {/* 🚀 MODAL CONSTANCIA DE COMUNICACIÓN DE BAJA (RA) */}
+      {modalBajaInfo && datosBaja && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '28px', width: '420px', maxWidth: '95vw', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', position: 'relative', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <button type="button" onClick={() => setModalBajaInfo(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={20} /></button>
+            <div>
+              <span style={{ fontSize: '10px', backgroundColor: '#fef2f2', color: '#b91c1c', padding: '3px 8px', borderRadius: '6px', fontWeight: '700', textTransform: 'uppercase' }}>Constancia SUNAT</span>
+              <h3 style={{ margin: '8px 0 0 0', fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Comunicación de Baja (RA)</h3>
+            </div>
+            <div style={{ backgroundColor: '#f8fafc', borderRadius: '12px', padding: '14px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#64748b' }}>Comprobante Anulado</span><span style={{ fontWeight: 600, color: '#0f172a' }}>{datosBaja.serie}-{String(datosBaja.numero || datosBaja.id).padStart(8, '0')}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#64748b' }}>Fecha</span><span style={{ fontWeight: 600, color: '#0f172a' }}>{formatearFechaSegura(datosBaja.fecha_emision)}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#64748b' }}>Estado</span><span style={{ fontWeight: 600, color: '#dc2626', textTransform: 'capitalize' }}>{datosBaja.estado}</span></div>
+            </div>
+            <button type="button" onClick={() => setModalBajaInfo(false)} style={{ width: '100%', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>Cerrar</button>
+          </div>
+        </div>
+      )}
+
+      {/* 🚀 MODAL ALTA RÁPIDA DE CLIENTE */}
+      {modalCliente && (
+        <div onClick={() => setModalCliente(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: '#fff', borderRadius: '16px', width: '448px', maxWidth: '92vw', padding: '28px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#0f172a' }}>Nuevo cliente</h2>
+              <button type="button" onClick={() => setModalCliente(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0 }}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleGuardarNuevoCliente}>
+              {errorCliente && <div style={{ backgroundColor: '#fef2f2', color: '#b91c1c', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px', border: '1px solid #fecaca' }}>{errorCliente}</div>}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>Tipo de documento</label>
+                <select value={tipoDocCliente} onChange={(e) => { setTipoDocCliente(e.target.value); setDocumentoCliente(''); setTocadoCliente(prev => ({...prev, documento: false})); }} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}>
+                  <option value="DNI">DNI</option><option value="RUC">RUC</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>{configDoc.campoNombre}</label>
+                <input type="text" value={nombreCliente} onChange={(e) => setNombreCliente(e.target.value)} onBlur={() => marcarTocadoCliente('nombre')} style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: `1px solid ${tocadoCliente.nombre && erroresCliente.nombre ? '#f87171' : '#cbd5e1'}`, fontSize: '14px', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>{configDoc.label}</label>
+                <input type="text" inputMode="numeric" value={documentoCliente} onChange={(e) => { const digitos = soloDigitos(e.target.value).slice(0, configDoc.digitos); setDocumentoCliente(digitos); }} onBlur={() => marcarTocadoCliente('documento')} style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: `1px solid ${tocadoCliente.documento && erroresCliente.documento ? '#f87171' : '#cbd5e1'}`, fontSize: '14px', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>Teléfono</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select value={paisCodigoCliente} onChange={(e) => { setPaisCodigoCliente(e.target.value); setTelefonoCliente(''); }} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}>
+                    {PAISES.map((p) => <option key={p.codigo} value={p.codigo}>{p.prefijo} {p.codigo}</option>)}
+                  </select>
+                  <input type="text" inputMode="numeric" value={telefonoCliente} onChange={(e) => { const digitos = soloDigitos(e.target.value).slice(0, pais.digitos); setTelefonoCliente(digitos); }} style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: `1px solid ${tocadoCliente.telefono && erroresCliente.telefono ? '#f87171' : '#cbd5e1'}`, fontSize: '14px', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button type="button" onClick={() => setModalCliente(false)} style={{ backgroundColor: '#f1f5f9', color: '#334155', border: 'none', padding: '10px 16px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>Cancelar</button>
+                <button type="submit" disabled={guardandoCliente} style={{ backgroundColor: '#1e3a8a', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>{guardandoCliente ? 'Guardando...' : 'Crear cliente'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🚀 MODAL ÉXITO */}
+      {showModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div style={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '16px', padding: '28px 24px', width: '340px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
+            <div style={{ width: '54px', height: '54px', borderRadius: '50%', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid #059669', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}><Check size={28} strokeWidth={2.5} /></div>
+            <div><h3 style={{ margin: 0, color: '#ffffff', fontSize: '18px', fontWeight: '700' }}>¡Venta completada!</h3></div>
+            <button type="button" onClick={() => setShowModal(false)} style={{ width: '100%', padding: '10px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}>Aceptar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
