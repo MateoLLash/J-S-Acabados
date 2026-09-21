@@ -75,3 +75,11 @@ class MetodoPagoOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class ClienteWebhookIn(BaseModel):
+    '''Lo que el otro sistema te manda cuando ELLOS crean un cliente.'''
+    nombre: str
+    documento: str | None = None
+    telefono: str | None = None
+    email: str | None = None
+    origen: str       

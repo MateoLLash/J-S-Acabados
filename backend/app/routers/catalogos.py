@@ -11,6 +11,8 @@ from app.schemas.catalogo import (
     MarcaCreate, MarcaOut, ClienteCreate, ClienteOut, MetodoPagoOut,
 )
 from app.auth.dependencies import get_current_user
+from fastapi import BackgroundTasks
+from app.integrations.webhooks import notificar_cliente_nuevo
 
 router = APIRouter(tags=["catalogos"])
 
@@ -106,15 +108,25 @@ def listar_clientes(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return db.query(Cliente).order_by(Cliente.nombre).all()
 
 
+
 @router.post("/clientes", response_model=ClienteOut, status_code=201)
-def crear_cliente(data: ClienteCreate, db: Session = Depends(get_db), usuario_actual=Depends(get_current_user)):
+def crear_cliente(
+    data: ClienteCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    usuario_actual=Depends(get_current_user),
+):
     cliente = Cliente(**data.model_dump())
     db.add(cliente)
-    
+ 
     try:
         db.execute(text("SELECT set_config('app.current_user_id', :user_id, true)"), {"user_id": str(usuario_actual.id)})
         db.commit()
         db.refresh(cliente)
+ 
+        # <<-- AQUI el paso clave: avisar al otro sistema, sin bloquear la respuesta -->>
+        background_tasks.add_task(notificar_cliente_nuevo, cliente)
+ 
         return cliente
     finally:
         db.execute(text("SELECT set_config('app.current_user_id', '', true)"))
