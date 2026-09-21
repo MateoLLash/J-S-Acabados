@@ -55,3 +55,4 @@ class ProductoMatch(Base):
     producto_competidor_id = Column(Integer, ForeignKey("productos_competidor.id"), nullable=False)
     confirmado_por_usuario = Column(Boolean, nullable=False, default=False)
     creado_en = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    producto_competidor = relationship("ProductoCompetidor")
