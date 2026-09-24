@@ -116,17 +116,16 @@ def crear_cliente(
     db: Session = Depends(get_db),
     usuario_actual=Depends(get_current_user),
 ):
-    cliente = Cliente(**data.model_dump())
+    cliente = Cliente(**data.model_dump(), origen="acabados_js")
     db.add(cliente)
- 
+
     try:
         db.execute(text("SELECT set_config('app.current_user_id', :user_id, true)"), {"user_id": str(usuario_actual.id)})
         db.commit()
         db.refresh(cliente)
- 
-        # <<-- AQUI el paso clave: avisar al otro sistema, sin bloquear la respuesta -->>
+
         background_tasks.add_task(notificar_cliente_nuevo, cliente)
- 
+
         return cliente
     finally:
         db.execute(text("SELECT set_config('app.current_user_id', '', true)"))

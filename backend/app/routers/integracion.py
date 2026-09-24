@@ -47,6 +47,7 @@ def recibir_cliente_externo(
         documento=payload.documento,
         telefono=payload.telefono,
         email=payload.email,
+        origen=payload.origen,
     )
     db.add(cliente)
 

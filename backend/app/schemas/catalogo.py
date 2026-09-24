@@ -64,6 +64,7 @@ class ClienteCreate(ClienteBase):
 
 class ClienteOut(ClienteBase):
     id: int
+    origen: str
 
     class Config:
         from_attributes = True
