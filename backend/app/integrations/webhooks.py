@@ -28,6 +28,6 @@ def notificar_cliente_nuevo(cliente) -> None:
         with httpx.Client(timeout=5.0) as client:
             resp = client.post(URL_WEBHOOK_OTRO_EQUIPO, json=payload, headers=headers)
             resp.raise_for_status()
+            print(f"[WEBHOOK] Cliente notificado correctamente: {resp.status_code} {resp.json()}")
     except httpx.HTTPError as e:
-        # TODO: reemplazar por tu logger real en vez de print
         print(f"[WEBHOOK] No se pudo notificar al otro sistema: {e}")
