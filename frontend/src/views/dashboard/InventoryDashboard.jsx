@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { styles } from './InventoryDashboard.styles';
 import { Package, CircleDollarSign, AlertTriangle, ShoppingCart } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { API_URL } from '../../utils/api';
 
 // Diccionario estático basado en tu volcado SQL de la tabla `categorias`
 const CATEGORIAS_MAP = {
@@ -44,9 +45,9 @@ const InventoryDashboard = () => {
           'Content-Type': 'application/json'
         };
 
-        const resProductos = await fetch('http://localhost:8000/productos/', { headers });
-        const resVentas = await fetch('http://localhost:8000/ventas/', { headers });
-        const resCompras = await fetch('http://localhost:8000/compras/', { headers });
+        const resProductos = await fetch(`${API_URL}/productos/`, { headers });
+        const resVentas = await fetch(`${API_URL}/ventas/`, { headers });
+        const resCompras = await fetch(`${API_URL}/compras/`, { headers });
 
         if (!resProductos.ok || !resVentas.ok || !resCompras.ok) {
           if (resProductos.status === 401 || resVentas.status === 401 || resCompras.status === 401) {

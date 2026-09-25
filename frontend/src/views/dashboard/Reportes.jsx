@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Download } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { apiFetch } from '../../utils/api';
+import { apiFetch, API_URL } from '../../utils/api';
 
 const Reportes = () => {
   const [periodo, setPeriodo] = useState('Semanal');
@@ -23,7 +23,7 @@ const Reportes = () => {
     const fetchRentabilidad = async () => {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:8000/analitica/rentabilidad', {
+        const res = await fetch(`${API_URL}/analitica/rentabilidad`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
@@ -47,7 +47,7 @@ const Reportes = () => {
         setError(null);
         const token = localStorage.getItem('token');
 
-        const res = await fetch(`http://localhost:8000/reportes/?periodo=${periodo.toLowerCase()}`, {
+        const res = await fetch(`${API_URL}/reportes/?periodo=${periodo.toLowerCase()}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
 

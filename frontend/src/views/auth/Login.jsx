@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User, ShieldAlert, Boxes, ArrowRight } from 'lucide-react';
 import { styles } from './Login.styles';
 import { useNavigate } from 'react-router-dom';
+import { API_URL } from '../../utils/api';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -24,10 +25,10 @@ const Login = () => {
     setErrorLogin('');
 
     try {
-      const response = await fetch('http://localhost:8000/auth/login', {
+      const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password }),  
       });
 
       const data = await response.json();

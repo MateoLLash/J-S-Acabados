@@ -2,7 +2,7 @@
 // Centraliza la URL base, el token de autorización y el manejo de errores
 // para que cada vista no tenga que repetir el mismo boilerplate de fetch.
 
-export const API_URL = 'http://localhost:8000';
+export const API_URL = 'https://j-s-acabados.onrender.com';
 
 /**
  * Llama a la API con el token guardado en localStorage.

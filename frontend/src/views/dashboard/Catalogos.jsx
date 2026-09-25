@@ -64,13 +64,30 @@ const BadgeOrigen = ({ origen }) => {
   );
 };
 
-// --- Utilidades de detalle (compartidas por los 4 popups) ---
+// --- Utilidades de detalle (compartidas por los popups) ---
 
 const tipoDocumento = (doc) => {
   const digitos = (doc || '').replace(/\D/g, '');
   if (digitos.length === 8) return 'DNI';
   if (digitos.length === 11) return 'RUC';
   return 'Documento';
+};
+
+// Grupo para separar visualmente la lista de clientes: 'DNI', 'RUC', 'otro' (tiene documento
+// pero no calza con 8 u 11 dígitos) o 'sin' (no registró documento). No confundir con
+// tipoDocumento: esa devuelve la ETIQUETA a mostrar; esta devuelve la CLAVE para agrupar.
+const GRUPOS_DOCUMENTO = {
+  DNI: { label: 'DNI', color: '#0891b2' },
+  RUC: { label: 'RUC', color: '#7c3aed' },
+  otro: { label: 'Otro documento', color: '#b45309' },
+  sin: { label: 'Sin documento', color: '#94a3b8' },
+};
+const claveGrupoDocumento = (doc) => {
+  const digitos = (doc || '').replace(/\D/g, '');
+  if (!digitos) return 'sin';
+  if (digitos.length === 8) return 'DNI';
+  if (digitos.length === 11) return 'RUC';
+  return 'otro';
 };
 
 // Solo genera enlace de WhatsApp si el número tiene formato de celular peruano.
@@ -115,11 +132,12 @@ const ESTILOS_CATALOGOS = `
   @keyframes girar { to { transform: rotate(360deg); } }
   .spinner { animation: girar .9s linear infinite; }
   .dato-accion:focus-visible { outline: 2px solid #1e3a8a; outline-offset: 1px; }
+  .grupo-pill { transition: background-color .15s, color .15s, border-color .15s; font-family: inherit; }
   @keyframes modalAnimIn { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
   .modal-anim { animation: modalAnimIn .18s ease-out; }
   @media (prefers-reduced-motion: reduce) {
     .modal-anim, .spinner, .icono-refresco { animation: none; }
-    .stat-card, .card-catalogo, .flecha-card, .btn-nuevo, .tab-pill { transition: none; }
+    .stat-card, .card-catalogo, .flecha-card, .btn-nuevo, .tab-pill, .grupo-pill { transition: none; }
   }
 `;
 
@@ -639,10 +657,21 @@ const EstadoVacio = ({ Icono, titulo, subtitulo, textoBoton, onBoton }) => (
   </div>
 );
 
+// Cabecera de sección para agrupar la lista de clientes por tipo de documento.
+const CabeceraGrupo = ({ label, color, cantidad }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '4px 0 10px' }}>
+    <span style={{ width: '8px', height: '8px', borderRadius: '999px', backgroundColor: color, flexShrink: 0 }} />
+    <span style={{ fontSize: '12px', fontWeight: '700', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</span>
+    <span style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8' }}>({cantidad})</span>
+    <div style={{ flex: 1, height: '1px', backgroundColor: '#f1f5f9' }} />
+  </div>
+);
+
 const Catalogos = () => {
   const [tab, setTab] = useState('marcas');
   const [busqueda, setBusqueda] = useState('');
   const [filtroOrigen, setFiltroOrigen] = useState('todos');
+  const [filtroDocumento, setFiltroDocumento] = useState('todos'); // 'todos' | 'DNI' | 'RUC'
 
   const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState(null);
   const [marcaSeleccionadaId, setMarcaSeleccionadaId] = useState(null);
@@ -700,6 +729,7 @@ const Catalogos = () => {
   useEffect(() => {
     setBusqueda('');
     setFiltroOrigen('todos');
+    setFiltroDocumento('todos');
     setClienteSeleccionadoId(null);
     setMarcaSeleccionadaId(null);
     setProveedorSeleccionadoId(null);
@@ -788,6 +818,7 @@ const Catalogos = () => {
   const limpiarFiltros = () => {
     setBusqueda('');
     setFiltroOrigen('todos');
+    setFiltroDocumento('todos');
   };
 
   // --- Filtros de búsqueda por pestaña ---
@@ -802,15 +833,30 @@ const Catalogos = () => {
         c.nombre.toLowerCase().includes(q) ||
         (c.documento || '').toLowerCase().includes(q);
       const coincideOrigen = filtroOrigen === 'todos' || c.origen === filtroOrigen;
-      return coincideTexto && coincideOrigen;
+      const coincideDocumento = filtroDocumento === 'todos' || claveGrupoDocumento(c.documento) === filtroDocumento;
+      return coincideTexto && coincideOrigen && coincideDocumento;
     }),
-    [clientes, busqueda, filtroOrigen]
+    [clientes, busqueda, filtroOrigen, filtroDocumento]
   );
   const conteoOrigen = useMemo(() => ({
     todos: clientes.length,
     acabados_js: clientes.filter((c) => c.origen === 'acabados_js').length,
     equipo_kanari: clientes.filter((c) => c.origen === 'equipo_kanari').length,
   }), [clientes]);
+  const conteoDocumento = useMemo(() => {
+    const base = { todos: clientes.length, DNI: 0, RUC: 0, otro: 0, sin: 0 };
+    clientes.forEach((c) => { base[claveGrupoDocumento(c.documento)] += 1; });
+    return base;
+  }, [clientes]);
+  // Clientes ya filtrados (búsqueda + origen + documento), agrupados por tipo de documento
+  // y en este orden fijo, para que la lista no se vea "mezclada".
+  const clientesAgrupados = useMemo(() => {
+    const grupos = { DNI: [], RUC: [], otro: [], sin: [] };
+    clientesFiltrados.forEach((c) => { grupos[claveGrupoDocumento(c.documento)].push(c); });
+    return ['DNI', 'RUC', 'otro', 'sin']
+      .map((clave) => ({ clave, ...GRUPOS_DOCUMENTO[clave], items: grupos[clave] }))
+      .filter((g) => g.items.length > 0);
+  }, [clientesFiltrados]);
   const clienteSeleccionado = useMemo(
     () => clientes.find((c) => c.id === clienteSeleccionadoId) ?? null,
     [clientes, clienteSeleccionadoId]
@@ -855,6 +901,25 @@ const Catalogos = () => {
       }
     },
   });
+
+  // Tarjeta individual de cliente (se reutiliza dentro de cada grupo DNI/RUC/otro/sin).
+  const TarjetaCliente = ({ c }) => (
+    <div key={c.id} {...tarjetaClicable(() => setClienteSeleccionadoId(c.id), '#16a34a')}>
+      <div style={avatarSuave(colorPorTexto(c.nombre))}>{c.nombre.charAt(0).toUpperCase()}</div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div title={c.nombre} style={{ ...nombreCardStyle, flexShrink: 1 }}>{c.nombre}</div>
+          <BadgeOrigen origen={c.origen} />
+        </div>
+        <div style={{ ...subtituloCardStyle, display: 'flex', gap: '10px', marginTop: '3px' }}>
+          {c.telefono && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Phone size={10} /> {c.telefono}</span>}
+          {c.documento && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><FileText size={10} /> {c.documento}</span>}
+          {!c.telefono && !c.documento && <span>Sin datos de contacto</span>}
+        </div>
+      </div>
+      <ChevronRight size={16} color="#94a3b8" className="flecha-card" style={{ flexShrink: 0 }} />
+    </div>
+  );
 
   if (loading) {
     return (
@@ -1000,36 +1065,71 @@ const Catalogos = () => {
           {tab === 'proveedores' && <BotonNuevo onClick={abrirNuevoProveedor}>Nuevo proveedor</BotonNuevo>}
         </div>
 
-        {/* Filtro por origen (solo clientes) */}
+        {/* Filtros (solo clientes): origen y tipo de documento */}
         {tab === 'clientes' && (
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-            {[
-              { id: 'todos', label: 'Todos' },
-              { id: 'acabados_js', label: 'Propios' },
-              { id: 'equipo_kanari', label: 'Kanari' },
-            ].map(({ id, label }) => {
-              const activo = filtroOrigen === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setFiltroOrigen(id)}
-                  style={{
-                    padding: '5px 12px',
-                    borderRadius: '999px',
-                    border: '1px solid',
-                    borderColor: activo ? '#16a34a' : '#e2e8f0',
-                    backgroundColor: activo ? '#16a34a' : '#fff',
-                    color: activo ? '#fff' : '#64748b',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {label} ({conteoOrigen[id]})
-                </button>
-              );
-            })}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '18px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', marginRight: '2px' }}>Origen:</span>
+              {[
+                { id: 'todos', label: 'Todos' },
+                { id: 'acabados_js', label: 'Propios' },
+                { id: 'equipo_kanari', label: 'Kanari' },
+              ].map(({ id, label }) => {
+                const activo = filtroOrigen === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className="grupo-pill"
+                    onClick={() => setFiltroOrigen(id)}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '999px',
+                      border: '1px solid',
+                      borderColor: activo ? '#16a34a' : '#e2e8f0',
+                      backgroundColor: activo ? '#16a34a' : '#fff',
+                      color: activo ? '#fff' : '#64748b',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {label} ({conteoOrigen[id]})
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', marginRight: '2px' }}>Documento:</span>
+              {[
+                { id: 'todos', label: 'Todos', color: '#334155' },
+                { id: 'DNI', label: 'DNI', color: GRUPOS_DOCUMENTO.DNI.color },
+                { id: 'RUC', label: 'RUC', color: GRUPOS_DOCUMENTO.RUC.color },
+              ].map(({ id, label, color }) => {
+                const activo = filtroDocumento === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className="grupo-pill"
+                    onClick={() => setFiltroDocumento(id)}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '999px',
+                      border: '1px solid',
+                      borderColor: activo ? color : '#e2e8f0',
+                      backgroundColor: activo ? color : '#fff',
+                      color: activo ? '#fff' : '#64748b',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {label} ({conteoDocumento[id]})
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -1075,7 +1175,7 @@ const Catalogos = () => {
           )
         )}
 
-        {/* CLIENTES */}
+        {/* CLIENTES — agrupados por DNI / RUC / otro documento / sin documento */}
         {tab === 'clientes' && (
           clientesFiltrados.length === 0 ? (
             clientes.length === 0 ? (
@@ -1090,32 +1190,21 @@ const Catalogos = () => {
               <EstadoVacio
                 Icono={Search}
                 titulo="Ningún cliente coincide con tu búsqueda"
-                subtitulo="Prueba con otro nombre, documento o cambia el filtro de origen."
+                subtitulo="Prueba con otro nombre, documento o cambia los filtros."
                 textoBoton="Limpiar filtros"
                 onBoton={limpiarFiltros}
               />
             )
           ) : (
             <>
-              <div style={gridCards}>
-                {clientesFiltrados.map((c) => (
-                  <div key={c.id} {...tarjetaClicable(() => setClienteSeleccionadoId(c.id), '#16a34a')}>
-                    <div style={avatarSuave(colorPorTexto(c.nombre))}>{c.nombre.charAt(0).toUpperCase()}</div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <div title={c.nombre} style={{ ...nombreCardStyle, flexShrink: 1 }}>{c.nombre}</div>
-                        <BadgeOrigen origen={c.origen} />
-                      </div>
-                      <div style={{ ...subtituloCardStyle, display: 'flex', gap: '10px', marginTop: '3px' }}>
-                        {c.telefono && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Phone size={10} /> {c.telefono}</span>}
-                        {c.documento && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><FileText size={10} /> {c.documento}</span>}
-                        {!c.telefono && !c.documento && <span>Sin datos de contacto</span>}
-                      </div>
-                    </div>
-                    <ChevronRight size={16} color="#94a3b8" className="flecha-card" style={{ flexShrink: 0 }} />
+              {clientesAgrupados.map(({ clave, label, color, items }, indice) => (
+                <div key={clave} style={{ marginTop: indice === 0 ? 0 : '22px' }}>
+                  <CabeceraGrupo label={label} color={color} cantidad={items.length} />
+                  <div style={gridCards}>
+                    {items.map((c) => <TarjetaCliente key={c.id} c={c} />)}
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
               <ContadorResultados visibles={clientesFiltrados.length} total={clientes.length} />
             </>
           )
