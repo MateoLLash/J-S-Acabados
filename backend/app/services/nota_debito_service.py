@@ -9,8 +9,8 @@ def procesar_nota_debito(venta_id_original: int, codigo_motivo: str, descripcion
         return {"exito": False, "error": "Venta original no encontrada"}
 
     es_factura = venta_original.tipo_comprobante == "factura"
-    # Series oficiales de SUNAT para Notas de Débito
-    serie_nd = "FD01" if es_factura else "BD01"
+    # 🔥 CORREGIDO: Actualizado a FD02 para facturas y BD02 para boletas
+    serie_nd = "FD02" if es_factura else "BD02"
     
     ultimo_numero = db.query(func.max(Venta.numero)).filter(
         Venta.tipo_documento_id == "08",
@@ -21,7 +21,7 @@ def procesar_nota_debito(venta_id_original: int, codigo_motivo: str, descripcion
     nota_debito = Venta(
         cliente_id=venta_original.cliente_id,
         tipo_comprobante=venta_original.tipo_comprobante,
-        tipo_documento_id="08", # 08 es Nota de Débito
+        tipo_documento_id="08",
         serie=serie_nd,
         numero=nuevo_numero,
         documento_referencia_id=venta_original.id,
@@ -35,7 +35,6 @@ def procesar_nota_debito(venta_id_original: int, codigo_motivo: str, descripcion
     db.add(nota_debito)
     db.flush()
 
-    # TRUCO: Usamos el primer producto de la venta original para no romper la llave foránea
     primer_detalle = db.query(VentaDetalle).filter(VentaDetalle.venta_id == venta_original.id).first()
     producto_comodin_id = primer_detalle.producto_id if primer_detalle else 1
 
@@ -48,7 +47,6 @@ def procesar_nota_debito(venta_id_original: int, codigo_motivo: str, descripcion
     db.add(nuevo_detalle)
     db.commit()
 
-    # Enviar a SUNAT (No usa tickets, es inmediato)
     resultado_sunat = procesar_envio_sunat(nota_debito.id, db, user_id)
     
     return {

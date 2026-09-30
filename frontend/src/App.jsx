@@ -15,7 +15,10 @@ import TiendaLayout from './views/tienda/TiendaLayout';
 import Catalogo from './views/tienda/Catalogo';
 import ProductoDetalle from './views/tienda/ProductoDetalle';
 import Checkout from './views/tienda/Checkout';
-import CompetenciaView from './views/dashboard/CompetenciaView'; // O la ruta exacta donde hayas guardado el archivo
+import CompetenciaView from './views/dashboard/CompetenciaView';
+
+// 1️⃣ NUEVA IMPORTACIÓN DE GUÍAS DE REMISIÓN
+import GuiasRemision from './views/dashboard/GuiasRemision'; 
 
 // Protege rutas privadas mediante Token
 const PrivateRoute = ({ children }) => {
@@ -62,6 +65,10 @@ function App() {
           <Route path="inventario" element={<Inventario />} />
           <Route path="compras" element={<Compras />} />
           <Route path="ventas" element={<ExcludeRole roles={['almacen']}><Ventas /></ExcludeRole>} />
+          
+          {/* 2️⃣ NUEVA RUTA PROTEGIDA PARA LAS GUÍAS */}
+          <Route path="guias" element={<GuiasRemision />} /> 
+          
           <Route path="catalogos" element={<Catalogos />} />
           <Route path="competencia" element={<CompetenciaView />} />
           <Route path="reportes" element={<RequireRole role="admin"><Reportes /></RequireRole>} />

@@ -297,7 +297,7 @@ export default function Ventas() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `Comprobante-${serie || 'B001'}-${numero}.pdf`);
+      link.setAttribute('download', `Comprobante-${serie || 'B002'}-${numero}.pdf`);
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
@@ -844,7 +844,7 @@ export default function Ventas() {
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>Comprobante</span>
                 <span style={{ fontWeight: 600, color: '#0f172a', textTransform: 'capitalize' }}>
-                  {ventaSeleccionada.tipo_comprobante || 'Documento'} {ventaSeleccionada.serie || 'F001'}-{String(ventaSeleccionada.numero || ventaSeleccionada.id).padStart(8, '0')}
+                  {ventaSeleccionada.tipo_comprobante || 'Documento'} {ventaSeleccionada.serie || 'F002'}-{String(ventaSeleccionada.numero || ventaSeleccionada.id).padStart(8, '0')}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -897,7 +897,13 @@ export default function Ventas() {
                     <option value="01">01 - Anulación de la operación</option>
                     <option value="02">02 - Anulación por error en el RUC</option>
                     <option value="03">03 - Corrección por error en la descripción</option>
+                    <option value="04">04 - Descuento global</option>
+                    <option value="05">05 - Descuento por ítem</option>
                     <option value="06">06 - Devolución total</option>
+                    <option value="07">07 - Devolución por ítem</option>
+                    <option value="08">08 - Bonificación</option>
+                    <option value="09">09 - Disminución en el valor</option>
+                    <option value="10">10 - Otros conceptos</option>
                   </select>
                 </div>
               ) : (
@@ -951,7 +957,7 @@ export default function Ventas() {
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>Comprobante Base</span>
                 <span style={{ fontWeight: 600, color: '#0f172a', textTransform: 'capitalize' }}>
-                  {ventaDebitoSel.serie || 'F001'}-{String(ventaDebitoSel.numero || ventaDebitoSel.id).padStart(8, '0')}
+                  {ventaDebitoSel.serie || 'F002'}-{String(ventaDebitoSel.numero || ventaDebitoSel.id).padStart(8, '0')}
                 </span>
               </div>
             </div>

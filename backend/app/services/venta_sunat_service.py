@@ -144,16 +144,16 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
     razon_social_cliente = venta.cliente.nombre if venta.cliente else "CLIENTE GENERAL"
     direccion_cliente = getattr(venta.cliente, 'direccion', '') or "-"
 
-    # Asignación automática de Serie si no viene predefinida
+    # Asignación automática a la familia de Series 02
     if venta.serie:
         serie_comp = venta.serie
     else:
         if es_nota_credito:
-            serie_comp = "FC01"
+            serie_comp = "FC02"
         elif es_nota_debito:
-            serie_comp = "FD01"
+            serie_comp = "FD02"
         else:
-            serie_comp = "F001" if tipo_comp == "01" else "B001"
+            serie_comp = "F002" if tipo_comp == "01" else "B002"
 
     numero_correlativo = str(int(venta.numero or venta.id)).zfill(8)
     file_name = f"{EMISOR_RUC}-{tipo_comp}-{serie_comp}-{numero_correlativo}"
@@ -164,7 +164,6 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
 
     lineas_ubl = []
     
-    # SUNAT exige etiquetas de cantidad diferentes según el documento
     if es_nota_credito:
         nombre_cantidad_tag = "cbc:CreditedQuantity"
     elif es_nota_debito:
@@ -177,7 +176,7 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
             "cbc:ID": _texto(it["numero_linea"]),
             nombre_cantidad_tag: {
                 "_attributes": {"unitCode": "NIU"},
-                "_text": it["cantidad"],
+                "_text": float(it["cantidad"]),
             },
             "cbc:LineExtensionAmount": _monto(it["valor_venta"]),
             "cac:PricingReference": {
@@ -211,7 +210,6 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
             "cac:Price": {"cbc:PriceAmount": _monto(it["valor_unitario"])},
         })
 
-    # 🔥 CORRECCIÓN CLAVE: El nombre del tag de totales cambia según el documento
     tag_totales = "cac:RequestedMonetaryTotal" if es_nota_debito else "cac:LegalMonetaryTotal"
 
     document_body = {
@@ -236,6 +234,7 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
                     "cbc:RegistrationName": _texto(EMISOR_RAZON_SOCIAL),
                     "cac:RegistrationAddress": {
                         "cbc:AddressTypeCode": _texto("0000"),
+                        # 🔥 CORRECCIÓN FINAL APLICADA: cac:AddressLine
                         "cac:AddressLine": {"cbc:Line": _texto(EMISOR_DIRECCION)},
                     },
                 },
@@ -249,6 +248,7 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
                 "cac:PartyLegalEntity": {
                     "cbc:RegistrationName": _texto(razon_social_cliente),
                     "cac:RegistrationAddress": {
+                        # 🔥 CORRECCIÓN FINAL APLICADA: cac:AddressLine
                         "cac:AddressLine": {"cbc:Line": _texto(direccion_cliente)}
                     },
                 },
@@ -279,11 +279,10 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
 
     if es_nota_credito or es_nota_debito:
         venta_ref = db.query(Venta).filter(Venta.id == venta.documento_referencia_id).first() if venta.documento_referencia_id else None
-        serie_ref = venta_ref.serie if (venta_ref and venta_ref.serie) else ("F001" if serie_comp.startswith("F") else "B001")
+        serie_ref = venta_ref.serie if (venta_ref and venta_ref.serie) else ("F002" if serie_comp.startswith("F") else "B002")
         numero_ref = str(int(venta_ref.numero or venta_ref.id)).zfill(8) if venta_ref else "00000001"
         tipo_doc_ref = str(venta_ref.tipo_documento_id).zfill(2) if venta_ref else ("01" if serie_ref.startswith("F") else "03")
 
-        # Catálogos oficiales SUNAT (09 para NC, 10 para ND)
         if es_nota_credito:
             motivos_oficial = {
                 "01": "ANULACION DE LA OPERACION",
@@ -353,7 +352,8 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
 
         if response.status_code in [200, 201]:
             res_json = response.json()
-            venta.estado_sunat = "enviado" if res_json.get("status") == "PENDIENTE" else "aceptado"
+            # Guardado directo como "aceptado"
+            venta.estado_sunat = "aceptado"
             venta.observaciones_sunat = f"Enviado a APISUNAT (documentId: {res_json.get('documentId', '')})"[:250]
             db.commit()
             db.refresh(venta)
@@ -387,9 +387,6 @@ def procesar_envio_sunat(venta_id: int, db: Session, usuario_id: int):
         db.execute(text("SELECT set_config('app.current_user_id', '', true)"))
 
 
-# ==============================================================================
-# NUEVO: FUNCIÓN PARA ENVIAR COMUNICACIONES DE BAJA (RA) USANDO voidBill
-# ==============================================================================
 def enviar_comunicacion_baja_sunat(comunicacion_id: int, db: Session):
     baja = db.query(ComunicacionBaja).filter(ComunicacionBaja.id == comunicacion_id).first()
     if not baja:
@@ -399,18 +396,12 @@ def enviar_comunicacion_baja_sunat(comunicacion_id: int, db: Session):
     if not detalles_baja:
         return {"exito": False, "error": "No hay documentos a dar de baja."}
 
-    # Ubicar la venta original que se desea anular
     venta_original = db.query(Venta).filter(Venta.id == detalles_baja[0].venta_id).first()
     if not venta_original:
         return {"exito": False, "error": "Venta original no encontrada."}
 
-    # --------------------------------------------------------------------------
-    # Extraer el ID interno de APISUNAT (MongoDB ObjectId)
-    # Lo buscamos dentro de la columna observaciones_sunat usando Expresiones Regulares
-    # --------------------------------------------------------------------------
     document_id_api = None
     if venta_original.observaciones_sunat:
-        # Busca el patrón "documentId: " seguido de caracteres alfanuméricos
         match = re.search(r"documentId:\s*([a-zA-Z0-9]+)", venta_original.observaciones_sunat)
         if match:
             document_id_api = match.group(1)
@@ -420,11 +411,10 @@ def enviar_comunicacion_baja_sunat(comunicacion_id: int, db: Session):
         db.commit()
         return {"exito": False, "error": "No se encontró el ID interno de APISUNAT en la venta. Asegúrate de anular un comprobante que fue aceptado recientemente."}
 
-    # Construimos el payload de anulación usando el ID interno que APISUNAT exige
     payload = {
         "personaId": PERSONA_ID,
         "personaToken": PERSONA_TOKEN,
-        "documentId": document_id_api, # Ej: 6aa8f1b2c3d4e5f6a7b8c9d0
+        "documentId": document_id_api, 
         "reason": detalles_baja[0].motivo_baja[:100]
     }
 
@@ -454,9 +444,7 @@ def enviar_comunicacion_baja_sunat(comunicacion_id: int, db: Session):
             print(f"Status Code: {response.status_code}")
             print(f"Respuesta: {error_msg}\n")
             
-            # 🔥 CORRECCIÓN: NO sobreescribimos observaciones_sunat para no perder el documentId original
             db.commit()
-            
             return {"exito": False, "error": f"Error de APISUNAT: {error_msg}"}
 
     except Exception as e:

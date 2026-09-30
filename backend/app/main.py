@@ -6,10 +6,9 @@ from fastapi.staticfiles import StaticFiles
 
 from app import models
 from app.database import engine, Base
-from app.routers import auth, usuarios, productos, catalogos, inventario, compras, ventas , reportes, analitica, tienda
+from app.routers import auth, usuarios, productos, catalogos, inventario, compras, ventas , reportes, analitica, tienda, guias
 from app.routers import competencia  # Importa el router
 from app.routers import integracion  # nuevo import
-
 
 # Crea las tablas si no existen (no reemplaza al schema.sql, es solo un respaldo)
 Base.metadata.create_all(bind=engine)
@@ -34,8 +33,8 @@ app.include_router(ventas.router)
 app.include_router(analitica.router)
 app.include_router(tienda.router)
 app.include_router(competencia.router)
+app.include_router(guias.router)
 app.include_router(integracion.router)
-
 
 # --- Fotos de productos ---
 # Carpeta física: backend/app/uploads/  ->  URL pública: http://localhost:8000/static/<archivo>

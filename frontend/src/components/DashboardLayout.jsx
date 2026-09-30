@@ -4,7 +4,8 @@ import { styles } from '../views/dashboard/InventoryDashboard.styles';
 import { 
   LayoutDashboard, Package, Boxes, ShoppingCart, 
   CircleDollarSign, BarChart3, Users, LogOut, 
-  AlertTriangle, Clock, DollarSign, BookMarked
+  AlertTriangle, Clock, DollarSign, BookMarked,
+  Truck, ChevronDown, ChevronRight
 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import NotificacionesBell from './NotificacionesBell';
@@ -14,6 +15,9 @@ const DashboardLayout = () => {
   const location = useLocation();
   const [alertasCount, setAlertasCount] = useState(0);
   const [horaActual, setHoraActual] = useState(new Date());
+
+  // Estado para controlar si el submenú de Inventario está abierto
+  const [menuInventarioAbierto, setMenuInventarioAbierto] = useState(false);
 
   // Estado del Inventario (Activo / En Auditoría / Operativo)
   const [inventarioActivo] = useState(true);
@@ -41,6 +45,13 @@ const DashboardLayout = () => {
     };
     fetchAlerts();
   }, []);
+
+  // 3. Abrir menú de inventario si entramos directo a una de sus rutas
+  useEffect(() => {
+    if (location.pathname === '/inventario' || location.pathname === '/guias') {
+      setMenuInventarioAbierto(true);
+    }
+  }, [location.pathname]);
 
   const handleLogout = () => {
     localStorage.clear();
@@ -70,20 +81,80 @@ const DashboardLayout = () => {
             <div style={styles.menuItem(isActive('/dashboard'))} onClick={() => navigate('/dashboard')}>
               <LayoutDashboard size={18} /> Dashboard
             </div>
+            
             <div style={styles.menuItem(isActive('/productos'))} onClick={() => navigate('/productos')}>
               <Package size={18} /> Productos
             </div>
-            <div style={styles.menuItem(isActive('/inventario'))} onClick={() => navigate('/inventario')}>
-              <Boxes size={18} /> Inventario
+            
+            {/* MENÚ INVENTARIO DESPLEGABLE */}
+            <div>
+              <div 
+                style={{ 
+                  ...styles.menuItem(isActive('/inventario') || isActive('/guias')), 
+                  justifyContent: 'space-between',
+                  marginBottom: menuInventarioAbierto ? '4px' : '8px'
+                }} 
+                onClick={() => setMenuInventarioAbierto(!menuInventarioAbierto)}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Boxes size={18} /> Inventario
+                </div>
+                {menuInventarioAbierto ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </div>
+              
+              {menuInventarioAbierto && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginLeft: '26px', marginBottom: '8px' }}>
+                  <div 
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      backgroundColor: isActive('/inventario') ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                      color: isActive('/inventario') ? '#ffffff' : '#94a3b8',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onClick={() => navigate('/inventario')}
+                  >
+                    <Package size={15} /> Stock y Almacén
+                  </div>
+                  
+                  <div 
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      backgroundColor: isActive('/guias') ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                      color: isActive('/guias') ? '#ffffff' : '#94a3b8',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onClick={() => navigate('/guias')}
+                  >
+                    <Truck size={15} /> Guías de Remisión
+                  </div>
+                </div>
+              )}
             </div>
+
             <div style={styles.menuItem(isActive('/compras'))} onClick={() => navigate('/compras')}>
               <ShoppingCart size={18} /> Compras
             </div>
+            
             {userRole !== 'almacen' && (
               <div style={styles.menuItem(isActive('/ventas'))} onClick={() => navigate('/ventas')}>
                 <CircleDollarSign size={18} /> Ventas / POS
               </div>
             )}
+            
             <div style={styles.menuItem(isActive('/catalogos'))} onClick={() => navigate('/catalogos')}>
               <BookMarked size={18} /> Catálogos
             </div>

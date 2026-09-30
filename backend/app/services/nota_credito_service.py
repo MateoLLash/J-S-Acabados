@@ -39,7 +39,6 @@ def procesar_anulacion(venta_id: int, codigo_motivo: str, motivo_desc: str, db: 
             estado_previo = venta_original.estado_sunat
             obs_previas = venta_original.observaciones_sunat or ""
             
-            # 🔥 CORRECCIÓN 1: Unimos el texto nuevo con el anterior para conservar el documentId
             venta_original.estado_sunat = "anulado"
             venta_original.observaciones_sunat = f"{obs_previas} | BAJA_RA: {motivo_desc}"
             
@@ -68,15 +67,13 @@ def procesar_anulacion(venta_id: int, codigo_motivo: str, motivo_desc: str, db: 
 
             db.commit()
 
-            # Llamamos a SUNAT usando el ID intacto
             resultado_envio = enviar_comunicacion_baja_sunat(nueva_baja.id, db)
 
-            # 🔥 CORRECCIÓN 2: Si SUNAT rechaza la petición, deshacemos la anulación local
             if not resultado_envio.get("exito"):
                 venta_original.estado_sunat = estado_previo
                 venta_original.observaciones_sunat = obs_previas
                 
-                if devolver_stock: # Retiramos el stock que habíamos sumado preventivamente
+                if devolver_stock:
                     for det in detalles_originales:
                         producto = db.query(Producto).filter(Producto.id == det.producto_id).with_for_update().first()
                         if producto and producto.stock is not None:
@@ -100,7 +97,8 @@ def procesar_anulacion(venta_id: int, codigo_motivo: str, motivo_desc: str, db: 
                 return {"exito": False, "error": "El comprobante excede el plazo máximo de 12 meses establecido por SUNAT."}
 
             es_factura = venta_original.tipo_comprobante == "factura"
-            serie_nc = "FC01" if es_factura else "BC01" 
+            # 🔥 Actualizado a FC02 y BC02
+            serie_nc = "FC02" if es_factura else "BC02" 
             
             ultimo_numero = db.query(func.max(Venta.numero)).filter(
                 Venta.tipo_documento_id == "07",
