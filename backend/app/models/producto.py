@@ -3,7 +3,6 @@ from sqlalchemy.orm import relationship
 
 from app.database import Base
 
-
 class Producto(Base):
     __tablename__ = "productos"
 
@@ -17,9 +16,8 @@ class Producto(Base):
     stock = Column(Integer, nullable=False, default=0)
     stock_minimo = Column(Integer, nullable=False, default=0)
     unidad = Column(String(20), nullable=False, default="unidad")
-
-    # Foto del producto para el catálogo (ruta pública servida en /static/...)
     imagen_url = Column(String(255), nullable=True)
+    origen = Column(String(50), nullable=False, server_default="acabados_js")
 
     categoria = relationship("Categoria")
     marca = relationship("Marca")

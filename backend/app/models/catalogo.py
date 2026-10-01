@@ -19,6 +19,7 @@ class Proveedor(Base):
     telefono = Column(String(20), nullable=True)
     email = Column(String(120), nullable=True)
     creado_en = Column(TIMESTAMP, server_default=func.now())
+    origen = Column(String(50), nullable=False, server_default="acabados_js")
 
 
 class Marca(Base):

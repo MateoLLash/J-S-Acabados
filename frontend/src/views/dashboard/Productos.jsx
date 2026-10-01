@@ -18,12 +18,40 @@ const FORM_VACIO = {
   unidad: 'unidad',
 };
 
+// Origen del producto: 'acabados_js' (creado aquí) o 'equipo_kanari' (recibido del sistema de Lina).
+const ORIGENES_PRODUCTO = {
+  acabados_js: { label: 'Propio', bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' },
+  equipo_kanari: { label: 'Kanari', bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },
+};
+
+const BadgeOrigenProducto = ({ origen }) => {
+  const cfg = ORIGENES_PRODUCTO[origen] ?? { label: origen || '—', bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' };
+  return (
+    <span
+      title={origen === 'equipo_kanari' ? 'Recibido del sistema de Lina (equipo Kanari)' : 'Producto propio de Acabados J&S'}
+      style={{
+        fontSize: '10px',
+        fontWeight: '600',
+        padding: '2px 7px',
+        borderRadius: '999px',
+        backgroundColor: cfg.bg,
+        color: cfg.color,
+        border: `1px solid ${cfg.border}`,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {cfg.label}
+    </span>
+  );
+};
+
 const Productos = () => {
   const navigate = useNavigate();
   const [productos, setProductos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [marcas, setMarcas] = useState([]);
   const [search, setSearch] = useState('');
+  const [filtroOrigen, setFiltroOrigen] = useState('todos'); // 'todos' | 'acabados_js' | 'equipo_kanari'
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -63,11 +91,19 @@ const Productos = () => {
 
   const nombreCategoria = (id) => categorias.find((c) => c.id === id)?.nombre || 'Sin categoría';
 
-  const filteredProductos = productos.filter(
-    (p) =>
+    const conteoOrigen = {
+    todos: productos.length,
+    acabados_js: productos.filter((p) => p.origen === 'acabados_js').length,
+    equipo_kanari: productos.filter((p) => p.origen === 'equipo_kanari').length,
+  };
+
+  const filteredProductos = productos.filter((p) => {
+    const coincideTexto =
       p.nombre.toLowerCase().includes(search.toLowerCase()) ||
-      p.codigo.toLowerCase().includes(search.toLowerCase())
-  );
+      p.codigo.toLowerCase().includes(search.toLowerCase());
+    const coincideOrigen = filtroOrigen === 'todos' || p.origen === filtroOrigen;
+    return coincideTexto && coincideOrigen;
+  });
 
   const abrirNuevo = () => {
     setEditando(null);
@@ -246,6 +282,37 @@ const Productos = () => {
         </div>
       </div>
 
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', width: '100%' }}>
+        <span style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', marginRight: '2px' }}>Origen:</span>
+        {[
+          { id: 'todos', label: 'Todos' },
+          { id: 'acabados_js', label: 'Propios' },
+          { id: 'equipo_kanari', label: 'Kanari' },
+        ].map(({ id, label }) => {
+          const activo = filtroOrigen === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setFiltroOrigen(id)}
+              style={{
+                padding: '5px 12px',
+                borderRadius: '999px',
+                border: '1px solid',
+                borderColor: activo ? '#f97316' : '#e2e8f0',
+                backgroundColor: activo ? '#f97316' : '#fff',
+                color: activo ? '#fff' : '#64748b',
+                fontSize: '12px',
+                fontWeight: '600',
+                cursor: 'pointer',
+              }}
+            >
+              {label} ({conteoOrigen[id]})
+            </button>
+          );
+        })}
+      </div>
+
       <div style={{ ...styles.tableCard, width: '100%', marginTop: 0 }}>
         <table style={styles.table}>
           <thead>
@@ -259,17 +326,21 @@ const Productos = () => {
               <th style={styles.th}>P. Venta</th>
               <th style={styles.th}>Stock</th>
               <th style={styles.th}>Unidad</th>
+              <th style={styles.th}>Origen</th>
               <th style={{ ...styles.th, textAlign: 'center' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {filteredProductos.length === 0 ? (
               <tr>
-                <td colSpan="10" style={{ ...styles.td, textAlign: 'center', color: '#64748b' }}>No se encontraron productos.</td>
+                <td colSpan="11" style={{ ...styles.td, textAlign: 'center', color: '#64748b' }}>No se encontraron productos.</td>
               </tr>
             ) : (
               filteredProductos.map((prod) => (
-  <tr key={prod.id}>
+  <tr
+    key={prod.id}
+    style={prod.origen === 'equipo_kanari' ? { backgroundColor: '#fffaf5', boxShadow: 'inset 3px 0 0 #fb923c' } : undefined}
+  >
     <td style={styles.td}>
       {prod.imagen_url ? (
         <img
@@ -295,6 +366,7 @@ const Productos = () => {
     <td style={{ ...styles.td, color: '#16a34a', fontWeight: '600', whiteSpace: 'nowrap' }}>S/ {parseFloat(prod.precio_venta).toFixed(2)}</td>
     <td style={styles.td}>{prod.stock}</td>
     <td style={styles.td}>{prod.unidad}</td>
+    <td style={styles.td}><BadgeOrigenProducto origen={prod.origen} /></td>
     <td style={styles.td}>
       <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
         <Edit size={16} color="#3b82f6" style={{ cursor: 'pointer' }} onClick={() => abrirEditar(prod)} />

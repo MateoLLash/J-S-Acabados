@@ -36,6 +36,7 @@ class ProductoOut(ProductoBase):
     stock: int
     imagen_url: Optional[str] = None
     marca: Optional[MarcaOut] = None
+    origen: str
 
     class Config:
         from_attributes = True

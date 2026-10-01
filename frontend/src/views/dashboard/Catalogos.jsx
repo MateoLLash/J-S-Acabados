@@ -31,9 +31,9 @@ const iconoMetodoPago = (nombre = '') => {
   return Wallet;
 };
 
-// Origen de los clientes: 'acabados_js' (creados aquí) o 'equipo_kanari' (recibidos del sistema de Lina).
+// Origen de clientes y proveedores: 'acabados_js' (creados aquí) o 'equipo_kanari' (recibidos del sistema de Lina).
 const ORIGENES = {
-  acabados_js: { label: 'Propio', title: 'Cliente creado en Acabados J&S', bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' },
+  acabados_js: { label: 'Propio', title: 'Registrado en Acabados J&S', bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' },
   equipo_kanari: { label: 'Kanari', title: 'Recibido del sistema de Lina (equipo Kanari)', bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },
 };
 
@@ -409,7 +409,9 @@ const DetalleProveedor = ({ proveedor, onClose }) => {
           </div>
           <div style={{ minWidth: 0, flex: 1, paddingRight: '30px' }}>
             <h2 id="proveedor-detalle-titulo" style={TITULO_MODAL_STYLE}>{proveedor.nombre}</h2>
-            <div style={SUBTITULO_MODAL_STYLE}>Proveedor</div>
+            <div style={{ marginTop: '8px' }}>
+              <BadgeOrigen origen={proveedor.origen} />
+            </div>
           </div>
           <BotonCerrarOscuro onClose={onClose} />
         </div>
@@ -454,6 +456,7 @@ const DetalleProveedor = ({ proveedor, onClose }) => {
           />
           <FilaDato Icono={Hash} etiqueta="ID de proveedor" valor={`#${proveedor.id}`} />
           <FilaDato Icono={Truck} etiqueta="Uso" valor="Se selecciona al registrar compras" />
+          <FilaDato Icono={Tag} etiqueta="Origen" valor={descripcionOrigen(proveedor.origen)} />
         </div>
 
         <PieDetalle onClose={onClose} />
@@ -672,6 +675,7 @@ const Catalogos = () => {
   const [busqueda, setBusqueda] = useState('');
   const [filtroOrigen, setFiltroOrigen] = useState('todos');
   const [filtroDocumento, setFiltroDocumento] = useState('todos'); // 'todos' | 'DNI' | 'RUC'
+  const [filtroOrigenProveedor, setFiltroOrigenProveedor] = useState('todos');
 
   const [clienteSeleccionadoId, setClienteSeleccionadoId] = useState(null);
   const [marcaSeleccionadaId, setMarcaSeleccionadaId] = useState(null);
@@ -730,6 +734,7 @@ const Catalogos = () => {
     setBusqueda('');
     setFiltroOrigen('todos');
     setFiltroDocumento('todos');
+    setFiltroOrigenProveedor('todos');
     setClienteSeleccionadoId(null);
     setMarcaSeleccionadaId(null);
     setProveedorSeleccionadoId(null);
@@ -819,6 +824,7 @@ const Catalogos = () => {
     setBusqueda('');
     setFiltroOrigen('todos');
     setFiltroDocumento('todos');
+    setFiltroOrigenProveedor('todos');
   };
 
   // --- Filtros de búsqueda por pestaña ---
@@ -873,9 +879,18 @@ const Catalogos = () => {
     () => metodosPago.find((mp) => mp.id === metodoPagoSeleccionadoId) ?? null,
     [metodosPago, metodoPagoSeleccionadoId]
   );
+  const conteoOrigenProveedor = useMemo(() => ({
+    todos: proveedores.length,
+    acabados_js: proveedores.filter((p) => p.origen === 'acabados_js').length,
+    equipo_kanari: proveedores.filter((p) => p.origen === 'equipo_kanari').length,
+  }), [proveedores]);
   const proveedoresFiltrados = useMemo(
-    () => proveedores.filter((p) => p.nombre.toLowerCase().includes(busqueda.toLowerCase())),
-    [proveedores, busqueda]
+    () => proveedores.filter((p) => {
+      const coincideTexto = p.nombre.toLowerCase().includes(busqueda.toLowerCase());
+      const coincideOrigen = filtroOrigenProveedor === 'todos' || p.origen === filtroOrigenProveedor;
+      return coincideTexto && coincideOrigen;
+    }),
+    [proveedores, busqueda, filtroOrigenProveedor]
   );
 
   const totales = { marcas: marcas.length, clientes: clientes.length, proveedores: proveedores.length, 'metodos-pago': metodosPago.length };
@@ -915,6 +930,28 @@ const Catalogos = () => {
           {c.telefono && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Phone size={10} /> {c.telefono}</span>}
           {c.documento && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><FileText size={10} /> {c.documento}</span>}
           {!c.telefono && !c.documento && <span>Sin datos de contacto</span>}
+        </div>
+      </div>
+      <ChevronRight size={16} color="#94a3b8" className="flecha-card" style={{ flexShrink: 0 }} />
+    </div>
+  );
+
+  // Tarjeta individual de proveedor, con su badge de origen igual que clientes.
+  const TarjetaProveedor = ({ p }) => (
+    <div key={p.id} {...tarjetaClicable(() => setProveedorSeleccionadoId(p.id), '#d97706')}>
+      <div style={avatarSuave(colorPorTexto(p.nombre))}>{p.nombre.charAt(0).toUpperCase()}</div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div title={p.nombre} style={{ ...nombreCardStyle, flexShrink: 1 }}>{p.nombre}</div>
+          <BadgeOrigen origen={p.origen} />
+        </div>
+        <div style={{ ...subtituloCardStyle, display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '3px' }}>
+          {p.contacto && <span>{p.contacto}</span>}
+          <span style={{ display: 'flex', gap: '10px' }}>
+            {p.telefono && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Phone size={10} /> {p.telefono}</span>}
+            {p.email && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Mail size={10} /> {p.email}</span>}
+          </span>
+          {!p.contacto && !p.telefono && !p.email && <span>Sin datos de contacto</span>}
         </div>
       </div>
       <ChevronRight size={16} color="#94a3b8" className="flecha-card" style={{ flexShrink: 0 }} />
@@ -1133,6 +1170,41 @@ const Catalogos = () => {
           </div>
         )}
 
+        {/* Filtro (solo proveedores): origen */}
+        {tab === 'proveedores' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '18px' }}>
+            <span style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', marginRight: '2px' }}>Origen:</span>
+            {[
+              { id: 'todos', label: 'Todos' },
+              { id: 'acabados_js', label: 'Propios' },
+              { id: 'equipo_kanari', label: 'Kanari' },
+            ].map(({ id, label }) => {
+              const activo = filtroOrigenProveedor === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className="grupo-pill"
+                  onClick={() => setFiltroOrigenProveedor(id)}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '999px',
+                    border: '1px solid',
+                    borderColor: activo ? '#d97706' : '#e2e8f0',
+                    backgroundColor: activo ? '#d97706' : '#fff',
+                    color: activo ? '#fff' : '#64748b',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {label} ({conteoOrigenProveedor[id]})
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* MARCAS */}
         {tab === 'marcas' && (
           marcasFiltradas.length === 0 ? (
@@ -1226,30 +1298,14 @@ const Catalogos = () => {
                 Icono={Search}
                 titulo="Ningún proveedor coincide con tu búsqueda"
                 subtitulo={`No encontramos proveedores con "${busqueda}".`}
-                textoBoton="Limpiar búsqueda"
+                textoBoton="Limpiar filtros"
                 onBoton={limpiarFiltros}
               />
             )
           ) : (
             <>
               <div style={gridCards}>
-                {proveedoresFiltrados.map((p) => (
-                  <div key={p.id} {...tarjetaClicable(() => setProveedorSeleccionadoId(p.id), '#d97706')}>
-                    <div style={avatarSuave(colorPorTexto(p.nombre))}>{p.nombre.charAt(0).toUpperCase()}</div>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div title={p.nombre} style={nombreCardStyle}>{p.nombre}</div>
-                      <div style={{ ...subtituloCardStyle, display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '3px' }}>
-                        {p.contacto && <span>{p.contacto}</span>}
-                        <span style={{ display: 'flex', gap: '10px' }}>
-                          {p.telefono && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Phone size={10} /> {p.telefono}</span>}
-                          {p.email && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Mail size={10} /> {p.email}</span>}
-                        </span>
-                        {!p.contacto && !p.telefono && !p.email && <span>Sin datos de contacto</span>}
-                      </div>
-                    </div>
-                    <ChevronRight size={16} color="#94a3b8" className="flecha-card" style={{ flexShrink: 0 }} />
-                  </div>
-                ))}
+                {proveedoresFiltrados.map((p) => <TarjetaProveedor key={p.id} p={p} />)}
               </div>
               <ContadorResultados visibles={proveedoresFiltrados.length} total={proveedores.length} />
             </>
