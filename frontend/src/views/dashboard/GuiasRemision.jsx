@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiFetch } from '../../utils/api';
+import { apiFetch, API_URL } from '../../utils/api';
 import { 
   Truck, MapPin, Package, Plus, Trash2, CheckCircle2, X, Check, Eye 
 } from 'lucide-react';
@@ -106,21 +106,23 @@ export default function GuiasRemision() {
   const handleVerPDF = async (guiaId) => {
     try {
       const token = localStorage.getItem('token');
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'; 
-      
-      const response = await fetch(`${baseUrl}/guias/${guiaId}/pdf`, {
+
+      const response = await fetch(`${API_URL}/guias/${guiaId}/pdf`, {
         method: 'GET',
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      if (!response.ok) throw new Error("No se pudo generar el PDF");
+      if (response.status === 401) {
+        throw new Error('Sesión expirada, inicia sesión de nuevo.');
+      }
+      if (!response.ok) throw new Error('No se pudo generar el PDF');
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       setPdfUrl(url);
       setPdfModalAbierto(true);
     } catch (err) {
-      alert("Error al cargar PDF: " + err.message);
+      alert('Error al cargar PDF: ' + err.message);
     }
   };
 

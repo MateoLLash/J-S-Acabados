@@ -5,6 +5,7 @@ import {
   ShoppingCart, Trash2, Plus, Minus, 
   User, Receipt, CreditCard, CheckCircle2, Check, UserPlus, FileDown, Eye, X, Ban, ChevronDown, CircleDollarSign
 } from 'lucide-react';
+import { API_URL } from '../../utils/api';
 
 const PAISES = [
   { codigo: "PE", nombre: "Perú", prefijo: "+51", digitos: 9, empiezaCon: ["9"] },
@@ -288,7 +289,7 @@ export default function Ventas() {
   const handleDescargarPDF = async (ventaId, serie, numero) => {
     setDescargandoId(ventaId);
     try {
-      const response = await fetch(`http://localhost:8000/ventas/${ventaId}/pdf/descargar`, {
+      const response = await fetch(`${API_URL}/ventas/${ventaId}/pdf/descargar`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('No se pudo generar el PDF del comprobante');
@@ -313,7 +314,7 @@ export default function Ventas() {
   const handleVerPDF = async (ventaId) => {
     setCargandoPdfModal(true);
     try {
-      const response = await fetch(`http://localhost:8000/ventas/${ventaId}/pdf`, {
+      const response = await fetch(`${API_URL}/ventas/${ventaId}/pdf`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('No se pudo cargar el PDF');
@@ -332,7 +333,7 @@ export default function Ventas() {
   const handleVerNC = async (ventaIdOriginal) => {
     setCargandoPdfModal(true);
     try {
-      const response = await fetch(`http://localhost:8000/ventas/${ventaIdOriginal}/pdf-nc`, {
+      const response = await fetch(`${API_URL}/ventas/${ventaIdOriginal}/pdf-nc`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('No se encontró el PDF de la Nota');
