@@ -58,7 +58,7 @@ const InventoryDashboard = () => {
           throw new Error('Error al conectar con las APIs');
         }
 
-        const productos = await resProductos.json();
+        const productos = (await resProductos.json()).filter((p) => p.origen !== 'lina');
         const ventas = await resVentas.json();
         const compras = await resCompras.json();
 

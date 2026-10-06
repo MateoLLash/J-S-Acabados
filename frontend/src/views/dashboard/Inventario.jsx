@@ -37,7 +37,8 @@ const Inventario = () => {
 
   const cargarProductos = async () => {
     const data = await apiFetch('/productos/');
-    setProductos(data);
+    // El inventario/almacén solo muestra productos propios (se excluyen los recibidos de Lina)
+    setProductos(data.filter((p) => p.origen !== 'lina'));
   };
 
   const cargarCategorias = async () => {

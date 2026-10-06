@@ -16,6 +16,7 @@ import Catalogo from './views/tienda/Catalogo';
 import ProductoDetalle from './views/tienda/ProductoDetalle';
 import Checkout from './views/tienda/Checkout';
 import CompetenciaView from './views/dashboard/CompetenciaView';
+import AuditoriaIntegracion from './views/dashboard/AuditoriaIntegracion';
 
 // 1️⃣ NUEVA IMPORTACIÓN DE GUÍAS DE REMISIÓN
 import GuiasRemision from './views/dashboard/GuiasRemision'; 
@@ -73,6 +74,7 @@ function App() {
           <Route path="competencia" element={<CompetenciaView />} />
           <Route path="reportes" element={<RequireRole role="admin"><Reportes /></RequireRole>} />
           <Route path="usuarios" element={<RequireRole role="admin"><Usuarios /></RequireRole>} />
+          <Route path="auditoria" element={<RequireRole role="admin"><AuditoriaIntegracion /></RequireRole>} />
         </Route>
 
         <Route path="*" element={<Navigate replace to="/login" />} />

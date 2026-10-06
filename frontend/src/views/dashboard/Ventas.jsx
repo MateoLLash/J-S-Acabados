@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { styles } from './Ventas.styles';
 import { apiFetch } from '../../utils/api';
-import { 
-  ShoppingCart, Trash2, Plus, Minus, 
+import {
+  ShoppingCart, Trash2, Plus, Minus,
   User, Receipt, CreditCard, CheckCircle2, Check, UserPlus, FileDown, Eye, X, Ban, ChevronDown, CircleDollarSign
 } from 'lucide-react';
 import { API_URL } from '../../utils/api';
@@ -61,7 +61,7 @@ export default function Ventas() {
   // Estados para Nota de Débito
   const [modalDebito, setModalDebito] = useState(false);
   const [ventaDebitoSel, setVentaDebitoSel] = useState(null);
-  const [motivoDebito, setMotivoDebito] = useState('03'); // Penalidades / Otros
+  const [motivoDebito, setMotivoDebito] = useState('03');
   const [descDebito, setDescDebito] = useState('');
   const [montoDebito, setMontoDebito] = useState('');
   const [procesandoDebito, setProcesandoDebito] = useState(false);
@@ -77,6 +77,15 @@ export default function Ventas() {
   const [tocadoCliente, setTocadoCliente] = useState({});
   const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [errorCliente, setErrorCliente] = useState('');
+
+  // Aviso de stock (aparece en el carrito y se autodestruye)
+  const [aviso, setAviso] = useState('');
+
+  useEffect(() => {
+    if (!aviso) return;
+    const t = setTimeout(() => setAviso(''), 3000);
+    return () => clearTimeout(t);
+  }, [aviso]);
 
   const pais = useMemo(() => PAISES.find((p) => p.codigo === paisCodigoCliente), [paisCodigoCliente]);
   const configDoc = TIPOS_DOC[tipoDocCliente];
@@ -159,7 +168,7 @@ export default function Ventas() {
       setClientes((prev) => [...prev, creado]);
       setClienteId(String(creado.id));
       setModalCliente(false);
-      
+
       setTipoDocCliente("DNI");
       setNombreCliente("");
       setDocumentoCliente("");
@@ -194,11 +203,38 @@ export default function Ventas() {
   const igv = subtotal * 0.18;
   const total = subtotal + igv;
 
-  const productosFiltrados = productos.filter((p) =>
-    p.nombre.toLowerCase().includes(busqueda.toLowerCase())
-  );
+  const totalUnidades = carrito.reduce((acc, i) => acc + (Number(i.cantidad) || 0), 0);
+
+  // Búsqueda por nombre, código o marca
+  const productosFiltrados = productos.filter((p) => {
+    const q = busqueda.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      p.nombre?.toLowerCase().includes(q) ||
+      String(p.codigo ?? '').toLowerCase().includes(q) ||
+      p.marca?.nombre?.toLowerCase().includes(q)
+    );
+  });
+
+  const cantidadEnCarrito = (productoId) => {
+    const item = carrito.find((i) => i.id === productoId);
+    return item ? Number(item.cantidad) || 0 : 0;
+  };
 
   const agregarAlCarrito = (producto) => {
+    const stock = Number(producto.stock) || 0;
+    const yaEnCarrito = cantidadEnCarrito(producto.id);
+
+    if (yaEnCarrito >= stock) {
+      setAviso(
+        stock === 0
+          ? `❌ "${producto.nombre}" no tiene stock disponible`
+          : `⚠️ Stock máximo alcanzado para "${producto.nombre}" (${stock} disp.)`
+      );
+      return;
+    }
+
+    setAviso('');
     setCarrito((prev) => {
       const existente = prev.find((item) => item.id === producto.id);
       if (existente) {
@@ -213,9 +249,12 @@ export default function Ventas() {
   const modificarCantidad = (id, delta) => {
     setCarrito((prev) =>
       prev
-        .map((item) =>
-          item.id === id ? { ...item, cantidad: (Number(item.cantidad) || 0) + delta } : item
-        )
+        .map((item) => {
+          if (item.id !== id) return item;
+          const nueva = (Number(item.cantidad) || 0) + delta;
+          const max = item.stock ?? nueva;
+          return { ...item, cantidad: Math.min(Math.max(nueva, 0), max) };
+        })
         .filter((item) => item.cantidad > 0)
     );
   };
@@ -259,6 +298,10 @@ export default function Ventas() {
       setError('Selecciona un cliente antes de completar la venta.');
       return;
     }
+    if (carrito.some((i) => !Number(i.cantidad) || Number(i.cantidad) < 1)) {
+      setError('Hay cantidades inválidas en el carrito. Revísalas antes de continuar.');
+      return;
+    }
     setProcesando(true);
     setError('');
     try {
@@ -275,7 +318,7 @@ export default function Ventas() {
           })),
         }),
       });
-      
+
       setCarrito([]);
       cargarProductos();
       setShowModal(true);
@@ -393,7 +436,7 @@ export default function Ventas() {
     try {
       await apiFetch(`/ventas/${ventaSeleccionada.id}/anular`, {
         method: 'POST',
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           codigo: motivoSeleccionado,
           motivo: descripcionMotivo.trim() || 'Anulación de la operación'
         })
@@ -410,7 +453,7 @@ export default function Ventas() {
 
   const abrirModalDebito = (v) => {
     setVentaDebitoSel(v);
-    setMotivoDebito('03'); // Por defecto Penalidades
+    setMotivoDebito('03');
     setDescDebito('');
     setMontoDebito('');
     setModalDebito(true);
@@ -469,16 +512,16 @@ export default function Ventas() {
       </div>
 
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-        <button 
+        <button
           type="button"
-          onClick={() => setVista('pos')} 
+          onClick={() => setVista('pos')}
           style={{ padding: '9px 18px', borderRadius: '8px', border: '1px solid', borderColor: vista === 'pos' ? '#cbd5e1' : 'transparent', backgroundColor: vista === 'pos' ? '#ffffff' : 'transparent', fontWeight: vista === 'pos' ? '600' : '400', color: vista === 'pos' ? '#0f172a' : '#64748b', cursor: 'pointer' }}
         >
           Punto de Venta
         </button>
-        <button 
+        <button
           type="button"
-          onClick={() => setVista('historial')} 
+          onClick={() => setVista('historial')}
           style={{ padding: '9px 18px', borderRadius: '8px', border: '1px solid', borderColor: vista === 'historial' ? '#cbd5e1' : 'transparent', backgroundColor: vista === 'historial' ? '#ffffff' : 'transparent', fontWeight: vista === 'historial' ? '600' : '400', color: vista === 'historial' ? '#0f172a' : '#64748b', cursor: 'pointer' }}
         >
           Historial de ventas
@@ -486,8 +529,11 @@ export default function Ventas() {
       </div>
 
       {error && (
-        <div style={{ backgroundColor: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px', fontSize: '13px' }}>
-          ⚠️ {error}
+        <div style={{ backgroundColor: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>⚠️ {error}</span>
+          <button type="button" onClick={() => setError('')} style={{ background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', padding: '2px' }}>
+            <X size={16} />
+          </button>
         </div>
       )}
 
@@ -505,154 +551,194 @@ export default function Ventas() {
           {cargandoHistorial ? (
             <div style={{ padding: '30px', textAlign: 'center', color: '#f97316', fontWeight: '500' }}>Cargando historial...</div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
-                  <th style={{ padding: '14px 16px' }}>#</th>
-                  <th style={{ padding: '14px 16px' }}>Fecha</th>
-                  <th style={{ padding: '14px 16px' }}>Cliente</th>
-                  <th style={{ padding: '14px 16px' }}>Comprobante</th>
-                  <th style={{ padding: '14px 16px' }}>Pago</th>
-                  <th style={{ padding: '14px 16px' }}>Total</th>
-                  <th style={{ padding: '14px 16px' }}>Estado SUNAT</th>
-                  <th style={{ padding: '14px 16px', textAlign: 'center' }}>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-              {ventas.length === 0 ? (
-                  <tr><td colSpan="8" style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>Aún no hay ventas registradas.</td></tr>
-                ) : ventas.map((v) => {
-                  const esNotaCredito = v.tipo_documento_id === '07';
-                  const esNotaDebito = v.tipo_documento_id === '08';
-                  const estaAnulado = v.estado_sunat === 'anulado';
-                  const esBajaReal = v.observaciones_sunat && (v.observaciones_sunat.includes("BAJA_RA") || v.observaciones_sunat.includes("BAJA SUNAT"));
-                  const esAnuladoPorNC = estaAnulado && !esBajaReal;
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', minWidth: '900px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
+                    <th style={{ padding: '14px 16px' }}>#</th>
+                    <th style={{ padding: '14px 16px' }}>Fecha</th>
+                    <th style={{ padding: '14px 16px' }}>Cliente</th>
+                    <th style={{ padding: '14px 16px' }}>Comprobante</th>
+                    <th style={{ padding: '14px 16px' }}>Pago</th>
+                    <th style={{ padding: '14px 16px' }}>Total</th>
+                    <th style={{ padding: '14px 16px' }}>Estado SUNAT</th>
+                    <th style={{ padding: '14px 16px', textAlign: 'center' }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ventas.length === 0 ? (
+                    <tr><td colSpan="8" style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>Aún no hay ventas registradas.</td></tr>
+                  ) : ventas.map((v) => {
+                    const esNotaCredito = v.tipo_documento_id === '07';
+                    const esNotaDebito = v.tipo_documento_id === '08';
+                    const estaAnulado = v.estado_sunat === 'anulado';
+                    const esBajaReal = v.observaciones_sunat && (v.observaciones_sunat.includes("BAJA_RA") || v.observaciones_sunat.includes("BAJA SUNAT"));
+                    const esAnuladoPorNC = estaAnulado && !esBajaReal;
 
-                  return (
-                    <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: estaAnulado ? '#f8fafc' : '#ffffff' }}>
-                      <td style={{ padding: '14px 16px', fontWeight: '600', color: estaAnulado ? '#94a3b8' : '#0f172a' }}>
-                        #{v.id} 
-                        {esNotaCredito && <span style={{ fontSize: '10px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', marginLeft: '4px' }}>NC</span>}
-                        {esNotaDebito && <span style={{ fontSize: '10px', backgroundColor: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px', marginLeft: '4px' }}>ND</span>}
-                      </td>
-                      <td style={{ padding: '14px 16px', color: '#475569' }}>{formatearFechaSegura(v.fecha)}</td>
-                      <td style={{ padding: '14px 16px' }}>{v.cliente?.nombre || (v.cliente_id ? `Cliente #${v.cliente_id}` : '-')}</td>
-                      <td style={{ padding: '14px 16px', textTransform: 'capitalize' }}>
-                        {esNotaCredito ? 'Nota de Crédito' : esNotaDebito ? 'Nota de Débito' : (v.tipo_comprobante || 'Boleta')}
-                        {v.serie && <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{v.serie}-{String(v.numero || v.id).padStart(8, '0')}</span>}
-                      </td>
-                      <td style={{ padding: '14px 16px', textTransform: 'capitalize' }}>{v.metodo_pago?.nombre || '-'}</td>
-                      <td style={{ padding: '14px 16px', fontWeight: 700, color: estaAnulado ? '#94a3b8' : '#059669', textDecoration: estaAnulado ? 'line-through' : 'none' }}>
-                        S/ {Number(v.total || 0).toFixed(2)}
-                      </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <span style={{
-                          ...estiloEstadoSunat(v.estado_sunat),
-                          fontSize: '11px', fontWeight: '600', padding: '3px 10px', borderRadius: '12px', textTransform: 'capitalize'
-                        }}>
-                          {estaAnulado ? (esBajaReal ? 'Anulado (Baja RA)' : 'Anulado (Con NC)') : (v.estado_sunat || 'pendiente')}
-                        </span>
-                      </td>
-                      <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                        <div className="flex items-center gap-2 justify-center">
-                          <button
-                            type="button"
-                            onClick={(e) => { e.preventDefault(); handleVerPDF(v.id); }}
-                            disabled={cargandoPdfModal}
-                            style={{ background: 'none', border: 'none', color: '#7c3aed', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px', padding: 0 }}
-                          >
-                            <Eye size={13} /> Ver
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.preventDefault(); handleDescargarPDF(v.id, v.serie, v.numero); }}
-                            disabled={descargandoId === v.id}
-                            style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px', padding: 0, opacity: descargandoId === v.id ? 0.6 : 1 }}
-                          >
-                            <FileDown size={13} /> Descargar
-                          </button>
-
-                          {esAnuladoPorNC && (
+                    return (
+                      <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: estaAnulado ? '#f8fafc' : '#ffffff' }}>
+                        <td style={{ padding: '14px 16px', fontWeight: '600', color: estaAnulado ? '#94a3b8' : '#0f172a' }}>
+                          #{v.id}
+                          {esNotaCredito && <span style={{ fontSize: '10px', backgroundColor: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', marginLeft: '4px' }}>NC</span>}
+                          {esNotaDebito && <span style={{ fontSize: '10px', backgroundColor: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px', marginLeft: '4px' }}>ND</span>}
+                        </td>
+                        <td style={{ padding: '14px 16px', color: '#475569' }}>{formatearFechaSegura(v.fecha)}</td>
+                        <td style={{ padding: '14px 16px' }}>{v.cliente?.nombre || (v.cliente_id ? `Cliente #${v.cliente_id}` : '-')}</td>
+                        <td style={{ padding: '14px 16px', textTransform: 'capitalize' }}>
+                          {esNotaCredito ? 'Nota de Crédito' : esNotaDebito ? 'Nota de Débito' : (v.tipo_comprobante || 'Boleta')}
+                          {v.serie && <span style={{ display: 'block', fontSize: '11px', color: '#64748b' }}>{v.serie}-{String(v.numero || v.id).padStart(8, '0')}</span>}
+                        </td>
+                        <td style={{ padding: '14px 16px', textTransform: 'capitalize' }}>{v.metodo_pago?.nombre || '-'}</td>
+                        <td style={{ padding: '14px 16px', fontWeight: 700, color: estaAnulado ? '#94a3b8' : '#059669', textDecoration: estaAnulado ? 'line-through' : 'none' }}>
+                          S/ {Number(v.total || 0).toFixed(2)}
+                        </td>
+                        <td style={{ padding: '14px 16px' }}>
+                          <span style={{
+                            ...estiloEstadoSunat(v.estado_sunat),
+                            fontSize: '11px', fontWeight: '600', padding: '3px 10px', borderRadius: '12px', textTransform: 'capitalize'
+                          }}>
+                            {estaAnulado ? (esBajaReal ? 'Anulado (Baja RA)' : 'Anulado (Con NC)') : (v.estado_sunat || 'pendiente')}
+                          </span>
+                        </td>
+                        <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
                             <button
                               type="button"
-                              onClick={(e) => { e.preventDefault(); handleVerNC(v.id); }}
+                              onClick={(e) => { e.preventDefault(); handleVerPDF(v.id); }}
                               disabled={cargandoPdfModal}
-                              style={{ background: '#e0f2fe', border: '1px solid #bae6fd', color: '#0369a1', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', marginLeft: '4px', transition: 'all 0.2s' }}
-                              title="Visualizar la Nota de Crédito"
+                              style={{ background: 'none', border: 'none', color: '#7c3aed', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px', padding: 0 }}
                             >
-                              <Receipt size={12} /> Ver NC
+                              <Eye size={13} /> Ver
                             </button>
-                          )}
-
-                          {esBajaReal && (
                             <button
                               type="button"
-                              onClick={(e) => { e.preventDefault(); handleVerBajaInfo(v.id); }}
-                              disabled={cargandoBajaInfo}
-                              style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', marginLeft: '4px' }}
-                              title="Ver constancia de Comunicación de Baja"
+                              onClick={(e) => { e.preventDefault(); handleDescargarPDF(v.id, v.serie, v.numero); }}
+                              disabled={descargandoId === v.id}
+                              style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px', padding: 0, opacity: descargandoId === v.id ? 0.6 : 1 }}
                             >
-                              <Ban size={12} /> Ver Baja RA
+                              <FileDown size={13} /> Descargar
                             </button>
-                          )}
 
-                          {/* BOTONES ACCIÓN PARA DOCUMENTOS VÁLIDOS */}
-                          {!estaAnulado && !esNotaCredito && !esNotaDebito && (
-                            <>
+                            {esAnuladoPorNC && (
                               <button
                                 type="button"
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); abrirModalAnular(v); }}
-                                style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px', padding: 0, marginLeft: '4px' }}
-                                title="Anular comprobante"
+                                onClick={(e) => { e.preventDefault(); handleVerNC(v.id); }}
+                                disabled={cargandoPdfModal}
+                                style={{ background: '#e0f2fe', border: '1px solid #bae6fd', color: '#0369a1', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', marginLeft: '4px', transition: 'all 0.2s' }}
+                                title="Visualizar la Nota de Crédito"
                               >
-                                <Ban size={13} /> Anular
+                                <Receipt size={12} /> Ver NC
                               </button>
-                              
+                            )}
+
+                            {esBajaReal && (
                               <button
                                 type="button"
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); abrirModalDebito(v); }}
-                                style={{ background: '#ffedd5', border: '1px solid #fed7aa', color: '#c2410c', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', marginLeft: '4px' }}
-                                title="Emitir Nota de Débito (Cobro Adicional)"
+                                onClick={(e) => { e.preventDefault(); handleVerBajaInfo(v.id); }}
+                                disabled={cargandoBajaInfo}
+                                style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', marginLeft: '4px' }}
+                                title="Ver constancia de Comunicación de Baja"
                               >
-                                <Plus size={12} /> Débito
+                                <Ban size={12} /> Ver Baja RA
                               </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            )}
+
+                            {!estaAnulado && !esNotaCredito && !esNotaDebito && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); abrirModalAnular(v); }}
+                                  style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px', padding: 0, marginLeft: '4px' }}
+                                  title="Anular comprobante"
+                                >
+                                  <Ban size={13} /> Anular
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); abrirModalDebito(v); }}
+                                  style={{ background: '#ffedd5', border: '1px solid #fed7aa', color: '#c2410c', fontSize: '11px', fontWeight: '700', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', borderRadius: '6px', marginLeft: '4px' }}
+                                  title="Emitir Nota de Débito (Cobro Adicional)"
+                                >
+                                  <Plus size={12} /> Débito
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '20px', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 400px', gap: '20px', alignItems: 'start' }}>
+
+          {/* ========== CATÁLOGO DE PRODUCTOS ========== */}
           <div>
             <input
-              placeholder="🔍 Buscar producto por nombre o código..."
+              placeholder="🔍 Buscar producto por nombre, código o marca..."
               style={{ width: '100%', padding: '12px 16px', borderRadius: '10px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', fontSize: '14px', outline: 'none', marginBottom: '16px', boxSizing: 'border-box' }}
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
             />
             <div style={styles.contenedorProductos}>
-              {productosFiltrados.map((p) => (
-                <div key={p.id} style={styles.cardProducto} onClick={() => agregarAlCarrito(p)}>
-                  <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a', marginBottom: '4px' }}>{p.nombre}</h3>
-                  <p style={{ fontSize: '12px', color: '#64748B', marginBottom: '8px' }}>{p.marca?.nombre || ''}</p>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <p style={{ color: '#ea580c', fontWeight: '700', fontSize: '15px' }}>S/ {parseFloat(p.precio_venta).toFixed(2)}</p>
-                    <span style={{ fontSize: '11px', backgroundColor: '#ecfdf5', color: '#047857', padding: '3px 8px', borderRadius: '12px', fontWeight: '500' }}>
-                      {p.stock} disp.
-                    </span>
-                  </div>
+              {productosFiltrados.length === 0 ? (
+                <div style={{ gridColumn: '1 / -1', width: '100%', textAlign: 'center', color: '#94a3b8', padding: '40px 20px', fontSize: '13px', fontWeight: '500' }}>
+                  No se encontraron productos{busqueda ? ` para "${busqueda}"` : ''}
                 </div>
-              ))}
+              ) : (
+                productosFiltrados.map((p) => {
+                  const stockNum = Number(p.stock) || 0;
+                  const sinStock = stockNum <= 0;
+                  const unidadesEnCarrito = cantidadEnCarrito(p.id);
+
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => !sinStock && agregarAlCarrito(p)}
+                      title={sinStock ? 'Producto agotado' : 'Clic para agregar al carrito'}
+                      style={{
+                        ...styles.cardProducto,
+                        position: 'relative',
+                        opacity: sinStock ? 0.55 : 1,
+                        cursor: sinStock ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {unidadesEnCarrito > 0 && (
+                        <span style={{ position: 'absolute', top: '8px', right: '8px', backgroundColor: '#ea580c', color: '#ffffff', fontSize: '10px', fontWeight: '700', borderRadius: '10px', padding: '2px 7px' }}>
+                          {unidadesEnCarrito} en carrito
+                        </span>
+                      )}
+                      <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#0f172a', marginBottom: '4px', paddingRight: unidadesEnCarrito > 0 ? '72px' : '0' }}>{p.nombre}</h3>
+                      <p style={{ fontSize: '12px', color: '#64748B', marginBottom: '8px' }}>{p.marca?.nombre || ''}</p>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <p style={{ color: '#ea580c', fontWeight: '700', fontSize: '15px' }}>S/ {parseFloat(p.precio_venta).toFixed(2)}</p>
+                        <span style={{
+                          fontSize: '11px', padding: '3px 8px', borderRadius: '12px', fontWeight: '500',
+                          backgroundColor: sinStock ? '#fef2f2' : stockNum <= 5 ? '#fef3c7' : '#ecfdf5',
+                          color: sinStock ? '#b91c1c' : stockNum <= 5 ? '#b45309' : '#047857',
+                        }}>
+                          {sinStock ? 'Agotado' : `${stockNum} disp.`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
 
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '20px', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.03)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* ========== CARRITO — SIN SCROLL INTERNO, TODOS LOS PRODUCTOS VISIBLES ========== */}
+          <div style={{
+            backgroundColor: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0',
+            padding: '20px 20px 0', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.03)',
+            display: 'flex', flexDirection: 'column', gap: '16px',
+          }}>
+            {/* Encabezado */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ShoppingCart size={18} color="#ea580c" />
@@ -668,6 +754,14 @@ export default function Ventas() {
               )}
             </div>
 
+            {/* Aviso de stock */}
+            {aviso && (
+              <div style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', color: '#92400e', fontSize: '12px', fontWeight: '600', padding: '8px 12px', borderRadius: '8px' }}>
+                {aviso}
+              </div>
+            )}
+
+            {/* Cliente / Comprobante / Pago */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div>
                 <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', marginBottom: '4px', display: 'block' }}>CLIENTE</label>
@@ -701,28 +795,24 @@ export default function Ventas() {
                   <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', marginBottom: '4px', display: 'block' }}>COMPROBANTE</label>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <Receipt size={14} color="#94a3b8" style={{ position: 'absolute', left: '8px', zIndex: 1 }} />
-                    <select 
-                      value={tipoComprobante} 
+                    <select
+                      value={tipoComprobante}
                       onChange={(e) => setTipoComprobante(e.target.value)}
-                      disabled 
-                      style={{ 
-                        width: '100%', 
-                        padding: '8px 8px 8px 28px', 
-                        borderRadius: '8px', 
-                        border: '1px solid #cbd5e1', 
-                        fontSize: '12px', 
-                        backgroundColor: '#f1f5f9', 
+                      disabled
+                      style={{
+                        width: '100%',
+                        padding: '8px 8px 8px 28px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '12px',
+                        backgroundColor: '#f1f5f9',
                         color: '#475569',
                         fontWeight: '600',
-                        outline: 'none', 
-                        cursor: 'not-allowed' 
+                        outline: 'none',
+                        cursor: 'not-allowed'
                       }}
                     >
-                      {esClienteRUC ? (
-                        <option value="factura">Factura</option>
-                      ) : (
-                        <option value="boleta">Boleta</option>
-                      )}
+                      {esClienteRUC ? <option value="factura">Factura</option> : <option value="boleta">Boleta</option>}
                     </select>
                   </div>
                 </div>
@@ -731,8 +821,8 @@ export default function Ventas() {
                   <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b', marginBottom: '4px', display: 'block' }}>PAGO</label>
                   <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                     <CreditCard size={14} color="#94a3b8" style={{ position: 'absolute', left: '8px', zIndex: '1' }} />
-                    <select 
-                      value={metodoPagoId} 
+                    <select
+                      value={metodoPagoId}
                       onChange={(e) => setMetodoPagoId(e.target.value)}
                       style={{ width: '100%', padding: '8px 8px 8px 28px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '12px', backgroundColor: '#fff', outline: 'none', cursor: 'pointer', textTransform: 'capitalize' }}
                     >
@@ -746,48 +836,74 @@ export default function Ventas() {
               </div>
             </div>
 
-            <div style={{ minHeight: '160px', maxHeight: '260px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
+            {/* 🛒 Lista de productos — SIN maxHeight ni overflowY: se ven TODOS */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {carrito.length === 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '30px 0', color: '#94a3b8', gap: '8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '28px 0', color: '#94a3b8', gap: '8px', border: '1px dashed #e2e8f0', borderRadius: '10px' }}>
                   <ShoppingCart size={32} strokeWidth={1.5} color="#cbd5e1" />
                   <span style={{ fontSize: '13px', fontWeight: '500' }}>Tu carrito está vacío</span>
+                  <span style={{ fontSize: '11px' }}>Haz clic en un producto para agregarlo</span>
                 </div>
               ) : (
-                carrito.map((item) => (
-                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #f1f5f9' }}>
-                    <div style={{ flex: 1, paddingRight: '8px' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '600', color: '#1e293b', lineHeight: '1.2' }}>{item.nombre}</div>
-                      <div style={{ fontSize: '11px', color: '#ea580c', fontWeight: '600', marginTop: '2px' }}>
-                        S/ {parseFloat(item.precio_venta).toFixed(2)}
+                carrito.map((item) => {
+                  const cant = Number(item.cantidad) || 0;
+                  const stockItem = item.stock != null ? Number(item.stock) : null;
+                  const alLimite = stockItem != null && cant >= stockItem;
+
+                  return (
+                    <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #f1f5f9' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#1e293b', lineHeight: '1.2', overflowWrap: 'anywhere' }}>{item.nombre}</div>
+                        <div style={{ fontSize: '11px', color: '#ea580c', fontWeight: '600', marginTop: '2px' }}>
+                          S/ {parseFloat(item.precio_venta).toFixed(2)}
+                          {stockItem != null && <span style={{ color: '#94a3b8', fontWeight: '400' }}> · Stock: {stockItem}</span>}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                        <button type="button" onClick={() => modificarCantidad(item.id, -1)} title="Restar una unidad" style={{ width: '24px', height: '24px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569' }}>
+                          <Minus size={12} />
+                        </button>
+                        <input
+                          type="number" min="1" max={stockItem ?? undefined} value={item.cantidad}
+                          onChange={(e) => cambiarCantidadTexto(item.id, e.target.value)}
+                          onBlur={() => confirmarCantidad(item.id)}
+                          onFocus={(e) => e.target.select()}
+                          style={{ width: '38px', fontSize: '13px', fontWeight: '700', textAlign: 'center', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 2px', outline: 'none' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => modificarCantidad(item.id, 1)}
+                          disabled={alLimite}
+                          title={alLimite ? 'Stock máximo alcanzado' : 'Sumar una unidad'}
+                          style={{ width: '24px', height: '24px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: alLimite ? 'not-allowed' : 'pointer', color: alLimite ? '#cbd5e1' : '#475569' }}
+                        >
+                          <Plus size={12} />
+                        </button>
+                        <div style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a', minWidth: '58px', textAlign: 'right' }}>
+                          S/ {(parseFloat(item.precio_venta) * cant).toFixed(2)}
+                        </div>
+                        <button type="button" onClick={() => quitarDelCarrito(item.id)} title="Quitar del carrito" style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px' }}>
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <button type="button" onClick={() => modificarCantidad(item.id, -1)} style={{ width: '24px', height: '24px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569' }}>
-                        <Minus size={12} />
-                      </button>
-                      <input
-                        type="number" min="1" value={item.cantidad}
-                        onChange={(e) => cambiarCantidadTexto(item.id, e.target.value)}
-                        onBlur={() => confirmarCantidad(item.id)}
-                        onFocus={(e) => e.target.select()}
-                        style={{ width: '38px', fontSize: '13px', fontWeight: '700', textAlign: 'center', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '3px 2px', outline: 'none' }}
-                      />
-                      <button type="button" onClick={() => modificarCantidad(item.id, 1)} style={{ width: '24px', height: '24px', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569' }}>
-                        <Plus size={12} />
-                      </button>
-                      <button type="button" onClick={() => quitarDelCarrito(item.id)} style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', padding: '2px', marginLeft: '4px' }}>
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
-            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* 💰 Totales — sticky: siempre visibles aunque el carrito sea largo */}
+            <div style={{
+              margin: '0 -20px', padding: '12px 20px 20px',
+              backgroundColor: '#ffffff', borderTop: '1px solid #e2e8f0',
+              borderBottomLeftRadius: '14px', borderBottomRightRadius: '14px',
+              position: 'sticky', bottom: 0, zIndex: 5,
+              display: 'flex', flexDirection: 'column', gap: '8px',
+              boxShadow: '0 -6px 12px rgba(15, 23, 42, 0.05)',
+            }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b' }}>
-                <span>Subtotal</span>
+                <span>Subtotal ({totalUnidades} {totalUnidades === 1 ? 'producto' : 'productos'})</span>
                 <span>S/ {subtotal.toFixed(2)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b' }}>
@@ -876,8 +992,8 @@ export default function Ventas() {
                     return (
                       <>
                         <option value="BAJA" disabled={plazoVencido || esBoleta}>
-                          {esBoleta ? '❌ Comunicación de Baja (SUNAT no lo permite para Boletas)' : 
-                           plazoVencido ? '❌ Comunicación de Baja (Bloqueado: > 7 días SUNAT)' : 
+                          {esBoleta ? '❌ Comunicación de Baja (SUNAT no lo permite para Boletas)' :
+                           plazoVencido ? '❌ Comunicación de Baja (Bloqueado: > 7 días SUNAT)' :
                            '⚡ Comunicación de Baja (RA - Plazo vigente)'}
                         </option>
                         <option value="NC">📄 Nota de Crédito Electrónica (Catálogo 09)</option>
@@ -950,66 +1066,69 @@ export default function Ventas() {
               <X size={20} />
             </button>
             <div>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Emitir Nota de Débito</h3>
-              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Genera un cobro adicional sobre el comprobante original.</p>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Nota de Débito electrónica</h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Emite un cobro adicional vinculado al comprobante. Se envía a SUNAT.</p>
             </div>
 
-            <div style={{ backgroundColor: '#f8fafc', borderRadius: '12px', padding: '14px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
+            <div style={{ backgroundColor: '#fff7ed', borderRadius: '12px', padding: '14px', border: '1px solid #fed7aa', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Comprobante Base</span>
+                <span style={{ color: '#64748b' }}>Comprobante</span>
                 <span style={{ fontWeight: 600, color: '#0f172a', textTransform: 'capitalize' }}>
-                  {ventaDebitoSel.serie || 'F002'}-{String(ventaDebitoSel.numero || ventaDebitoSel.id).padStart(8, '0')}
+                  {ventaDebitoSel.tipo_comprobante || 'Documento'} {ventaDebitoSel.serie || 'F002'}-{String(ventaDebitoSel.numero || ventaDebitoSel.id).padStart(8, '0')}
                 </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Total actual</span>
+                <span style={{ fontWeight: 600, color: '#0f172a' }}>S/ {Number(ventaDebitoSel.total || 0).toFixed(2)}</span>
               </div>
             </div>
 
             <form onSubmit={handleConfirmarDebito} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Motivo SUNAT (Catálogo 10)</label>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Motivo (Catálogo 10)</label>
                 <select
                   value={motivoDebito}
                   onChange={(e) => setMotivoDebito(e.target.value)}
-                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', outline: 'none', cursor: 'pointer', fontWeight: '500' }}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', outline: 'none', cursor: 'pointer' }}
                 >
-                  <option value="03">03 - Penalidades / Otros conceptos</option>
-                  <option value="01">01 - Intereses por mora</option>
+                  <option value="01">01 - Intereses / Mora</option>
                   <option value="02">02 - Aumento en el valor</option>
+                  <option value="03">03 - Penalidades / Otros conceptos</option>
                 </select>
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Descripción del cobro</label>
-                <input
-                  type="text"
-                  placeholder="Ej. Cobro adicional por flete de envío"
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Descripción</label>
+                <textarea
+                  rows={3}
+                  placeholder="Detalle del recargo o penalidad..."
                   value={descDebito}
                   onChange={(e) => setDescDebito(e.target.value)}
-                  required
-                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none', resize: 'none' }}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Monto a cobrar (S/)</label>
-                <div style={{ position: 'relative' }}>
-                  <CircleDollarSign size={16} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Monto adicional (S/)</label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <CircleDollarSign size={15} color="#94a3b8" style={{ position: 'absolute', left: '10px', zIndex: 1 }} />
                   <input
                     type="number"
+                    min="0.01"
                     step="0.01"
-                    min="0.1"
                     placeholder="0.00"
+                    required
                     value={montoDebito}
                     onChange={(e) => setMontoDebito(e.target.value)}
-                    required
-                    style={{ width: '100%', padding: '10px 10px 10px 32px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', outline: 'none', boxSizing: 'border-box', fontWeight: '600' }}
+                    style={{ width: '100%', padding: '10px 10px 10px 32px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: '600', outline: 'none', boxSizing: 'border-box' }}
                   />
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
                 <button type="button" onClick={() => setModalDebito(false)} style={{ flex: 1, backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>Cancelar</button>
-                <button type="submit" disabled={procesandoDebito || !montoDebito} style={{ flex: 1, backgroundColor: procesandoDebito || !montoDebito ? '#fdba74' : '#ea580c', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: procesandoDebito || !montoDebito ? 'not-allowed' : 'pointer', fontSize: '14px' }}>
-                  {procesandoDebito ? 'Emitiendo...' : 'Generar Débito'}
+                <button type="submit" disabled={procesandoDebito} style={{ flex: 1, backgroundColor: procesandoDebito ? '#fdba74' : '#ea580c', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: procesandoDebito ? 'not-allowed' : 'pointer', fontSize: '14px' }}>
+                  {procesandoDebito ? 'Generando...' : 'Generar Nota de Débito'}
                 </button>
               </div>
             </form>
@@ -1017,74 +1136,272 @@ export default function Ventas() {
         </div>
       )}
 
-      {/* 🚀 MODAL CONSTANCIA DE COMUNICACIÓN DE BAJA (RA) */}
-      {modalBajaInfo && datosBaja && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '28px', width: '420px', maxWidth: '95vw', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', position: 'relative', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <button type="button" onClick={() => setModalBajaInfo(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}><X size={20} /></button>
-            <div>
-              <span style={{ fontSize: '10px', backgroundColor: '#fef2f2', color: '#b91c1c', padding: '3px 8px', borderRadius: '6px', fontWeight: '700', textTransform: 'uppercase' }}>Constancia SUNAT</span>
-              <h3 style={{ margin: '8px 0 0 0', fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Comunicación de Baja (RA)</h3>
-            </div>
-            <div style={{ backgroundColor: '#f8fafc', borderRadius: '12px', padding: '14px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#64748b' }}>Comprobante Anulado</span><span style={{ fontWeight: 600, color: '#0f172a' }}>{datosBaja.serie}-{String(datosBaja.numero || datosBaja.id).padStart(8, '0')}</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#64748b' }}>Fecha</span><span style={{ fontWeight: 600, color: '#0f172a' }}>{formatearFechaSegura(datosBaja.fecha_emision)}</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#64748b' }}>Estado</span><span style={{ fontWeight: 600, color: '#dc2626', textTransform: 'capitalize' }}>{datosBaja.estado}</span></div>
-            </div>
-            <button type="button" onClick={() => setModalBajaInfo(false)} style={{ width: '100%', backgroundColor: '#0f172a', color: '#ffffff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>Cerrar</button>
-          </div>
-        </div>
-      )}
-
-      {/* 🚀 MODAL ALTA RÁPIDA DE CLIENTE */}
+      {/* 🚀 MODAL NUEVO CLIENTE */}
       {modalCliente && (
-        <div onClick={() => setModalCliente(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: '#fff', borderRadius: '16px', width: '448px', maxWidth: '92vw', padding: '28px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', position: 'relative' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#0f172a' }}>Nuevo cliente</h2>
-              <button type="button" onClick={() => setModalCliente(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0 }}><X size={20} /></button>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '28px', width: '440px', maxWidth: '95vw', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', position: 'relative', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <button type="button" onClick={() => setModalCliente(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+              <X size={20} />
+            </button>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>Nuevo cliente</h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>Registra los datos del cliente para emitir su comprobante.</p>
             </div>
-            <form onSubmit={handleGuardarNuevoCliente}>
-              {errorCliente && <div style={{ backgroundColor: '#fef2f2', color: '#b91c1c', padding: '10px 14px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px', border: '1px solid #fecaca' }}>{errorCliente}</div>}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>Tipo de documento</label>
-                <select value={tipoDocCliente} onChange={(e) => { setTipoDocCliente(e.target.value); setDocumentoCliente(''); setTocadoCliente(prev => ({...prev, documento: false})); }} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}>
-                  <option value="DNI">DNI</option><option value="RUC">RUC</option>
+
+            <form onSubmit={handleGuardarNuevoCliente} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Tipo de documento</label>
+                <select
+                  value={tipoDocCliente}
+                  onChange={(e) => {
+                    setTipoDocCliente(e.target.value);
+                    setDocumentoCliente('');
+                    setTocadoCliente((prev) => ({ ...prev, documento: false }));
+                  }}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', outline: 'none', cursor: 'pointer' }}
+                >
+                  <option value="DNI">DNI</option>
+                  <option value="RUC">RUC</option>
                 </select>
               </div>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>{configDoc.campoNombre}</label>
-                <input type="text" value={nombreCliente} onChange={(e) => setNombreCliente(e.target.value)} onBlur={() => marcarTocadoCliente('nombre')} style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: `1px solid ${tocadoCliente.nombre && erroresCliente.nombre ? '#f87171' : '#cbd5e1'}`, fontSize: '14px', boxSizing: 'border-box' }} />
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>{configDoc.label}</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder={`Ingresa ${configDoc.digitos} dígitos`}
+                  value={documentoCliente}
+                  onChange={(e) => setDocumentoCliente(soloDigitos(e.target.value).slice(0, configDoc.digitos))}
+                  onBlur={() => marcarTocadoCliente('documento')}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                />
+                {tocadoCliente.documento && erroresCliente.documento && (
+                  <span style={{ fontSize: '11px', color: '#dc2626', marginTop: '4px', display: 'block' }}>{erroresCliente.documento}</span>
+                )}
               </div>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>{configDoc.label}</label>
-                <input type="text" inputMode="numeric" value={documentoCliente} onChange={(e) => { const digitos = soloDigitos(e.target.value).slice(0, configDoc.digitos); setDocumentoCliente(digitos); }} onBlur={() => marcarTocadoCliente('documento')} style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: `1px solid ${tocadoCliente.documento && erroresCliente.documento ? '#f87171' : '#cbd5e1'}`, fontSize: '14px', boxSizing: 'border-box' }} />
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>{configDoc.campoNombre}</label>
+                <input
+                  type="text"
+                  placeholder={tipoDocCliente === 'RUC' ? 'Razón social de la empresa' : 'Nombres y apellidos'}
+                  value={nombreCliente}
+                  onChange={(e) => setNombreCliente(e.target.value)}
+                  onBlur={() => marcarTocadoCliente('nombre')}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                />
+                {tocadoCliente.nombre && erroresCliente.nombre && (
+                  <span style={{ fontSize: '11px', color: '#dc2626', marginTop: '4px', display: 'block' }}>{erroresCliente.nombre}</span>
+                )}
               </div>
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#475569', marginBottom: '6px' }}>Teléfono</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <select value={paisCodigoCliente} onChange={(e) => { setPaisCodigoCliente(e.target.value); setTelefonoCliente(''); }} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}>
-                    {PAISES.map((p) => <option key={p.codigo} value={p.codigo}>{p.prefijo} {p.codigo}</option>)}
-                  </select>
-                  <input type="text" inputMode="numeric" value={telefonoCliente} onChange={(e) => { const digitos = soloDigitos(e.target.value).slice(0, pais.digitos); setTelefonoCliente(digitos); }} style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: `1px solid ${tocadoCliente.telefono && erroresCliente.telefono ? '#f87171' : '#cbd5e1'}`, fontSize: '14px', boxSizing: 'border-box' }} />
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>País</label>
+                <select
+                  value={paisCodigoCliente}
+                  onChange={(e) => {
+                    setPaisCodigoCliente(e.target.value);
+                    const nuevoPais = PAISES.find((p) => p.codigo === e.target.value);
+                    setTelefonoCliente((prev) => soloDigitos(prev).slice(0, nuevoPais?.digitos || 9));
+                  }}
+                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#fff', outline: 'none', cursor: 'pointer' }}
+                >
+                  {PAISES.map((p) => (
+                    <option key={p.codigo} value={p.codigo}>{p.nombre} ({p.prefijo})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '4px' }}>Teléfono ({pais.prefijo})</label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ position: 'absolute', left: '10px', fontSize: '12px', fontWeight: '600', color: '#64748b' }}>{pais.prefijo}</span>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder={`Ingresa ${pais.digitos} dígitos`}
+                    value={telefonoCliente}
+                    onChange={(e) => setTelefonoCliente(soloDigitos(e.target.value).slice(0, pais.digitos))}
+                    onBlur={() => marcarTocadoCliente('telefono')}
+                    style={{ width: '100%', padding: '10px 10px 10px 46px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+                  />
                 </div>
+                {tocadoCliente.telefono && erroresCliente.telefono && (
+                  <span style={{ fontSize: '11px', color: '#dc2626', marginTop: '4px', display: 'block' }}>{erroresCliente.telefono}</span>
+                )}
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button type="button" onClick={() => setModalCliente(false)} style={{ backgroundColor: '#f1f5f9', color: '#334155', border: 'none', padding: '10px 16px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>Cancelar</button>
-                <button type="submit" disabled={guardandoCliente} style={{ backgroundColor: '#1e3a8a', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>{guardandoCliente ? 'Guardando...' : 'Crear cliente'}</button>
+
+              {errorCliente && (
+                <div style={{ backgroundColor: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', padding: '10px 12px', borderRadius: '8px', fontSize: '12px' }}>
+                  {errorCliente}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                <button type="button" onClick={() => setModalCliente(false)} style={{ flex: 1, backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>Cancelar</button>
+                <button type="submit" disabled={guardandoCliente} style={{ flex: 1, backgroundColor: guardandoCliente ? '#fdba74' : '#ea580c', color: '#fff', border: 'none', padding: '10px', borderRadius: '8px', fontWeight: '600', cursor: guardandoCliente ? 'not-allowed' : 'pointer', fontSize: '14px' }}>
+                  {guardandoCliente ? 'Guardando...' : 'Guardar cliente'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* 🚀 MODAL ÉXITO */}
+            {/* 🚀 MODAL INFO DE COMUNICACIÓN DE BAJA (RA) — diseño mejorado */}
+      {modalBajaInfo && datosBaja && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '18px', width: '440px', maxWidth: '95vw', boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.4)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+
+            {/* Barra de acento superior */}
+            <div style={{ height: '5px', background: 'linear-gradient(90deg, #dc2626, #f97316)' }} />
+
+            {/* Encabezado */}
+            <div style={{ padding: '18px 22px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'linear-gradient(135deg, #fef2f2, #fee2e2)', border: '1px solid #fecaca', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Ban size={20} color="#dc2626" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>Comunicación de Baja (RA)</h3>
+                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>Constancia del envío de baja a SUNAT</p>
+              </div>
+              <button type="button" onClick={() => { setModalBajaInfo(false); setDatosBaja(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }} title="Cerrar">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Filas de datos */}
+            <div style={{ margin: '0 22px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', overflow: 'hidden' }}>
+              {(() => {
+                const LABELS = {
+                  ticket: 'Ticket SUNAT',
+                  numero_ticket: 'Ticket SUNAT',
+                  nro_ticket: 'Ticket SUNAT',
+                  fecha_envio: 'Fecha de envío',
+                  fecha_baja: 'Fecha de baja',
+                  fecha_comunicacion: 'Fecha de comunicación',
+                  serie: 'Serie',
+                  numero: 'Número',
+                  motivo: 'Motivo',
+                  descripcion: 'Descripción',
+                  estado: 'Estado',
+                  observaciones_sunat: 'Observaciones SUNAT',
+                  codigo: 'Código SUNAT',
+                };
+
+                const ESTILOS_ESTADO = {
+                  aceptado: { bg: '#ecfdf5', color: '#047857', dot: '#10b981' },
+                  enviado: { bg: '#ecfdf5', color: '#047857', dot: '#10b981' },
+                  anulado: { bg: '#fef2f2', color: '#b91c1c', dot: '#ef4444' },
+                  rechazado: { bg: '#fef2f2', color: '#b91c1c', dot: '#ef4444' },
+                };
+
+                const entradas = Object.entries(datosBaja)
+                  .filter(([k, v]) => v !== null && v !== undefined && v !== '' && typeof v !== 'object')
+                  .map(([k, v]) => {
+                    const esFecha = /fecha/i.test(k);
+                    let valor = String(v);
+                    if (esFecha && !isNaN(new Date(valor).getTime())) {
+                      valor = formatearFechaSegura(valor);
+                    }
+                    return {
+                      key: k,
+                      etiqueta: LABELS[k] || k.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()),
+                      valor,
+                    };
+                  });
+
+                if (entradas.length === 0) {
+                  return (
+                    <div style={{ padding: '20px 16px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
+                      No hay información disponible para esta baja.
+                    </div>
+                  );
+                }
+
+                return entradas.map(({ key, etiqueta, valor }, i) => {
+                  const esTextoLargo = valor.length > 40;
+
+                  // --- Render especial según el tipo de valor ---
+                  let contenidoValor;
+                  if (key === 'estado' && ESTILOS_ESTADO[valor.toLowerCase()]) {
+                    const e = ESTILOS_ESTADO[valor.toLowerCase()];
+                    contenidoValor = (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: e.bg, color: e.color, padding: '4px 12px', borderRadius: '999px', fontSize: '11px', fontWeight: 700, textTransform: 'capitalize' }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: e.dot }} />
+                        {valor}
+                      </span>
+                    );
+                  } else if (key === 'total' || (key === 'monto' && !isNaN(Number(valor)))) {
+                    contenidoValor = (
+                      <span style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>
+                        S/ {Number(valor).toFixed(2)}
+                      </span>
+                    );
+                  } else if (key.includes('ticket') || key.includes('documento')) {
+                    contenidoValor = (
+                      <code style={{ fontSize: '12px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', color: '#334155', backgroundColor: '#eef2f7', padding: '4px 10px', borderRadius: '8px', overflowWrap: 'anywhere' }}>
+                        {valor}
+                      </code>
+                    );
+                  } else {
+                    contenidoValor = (
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', textAlign: esTextoLargo ? 'left' : 'right', overflowWrap: 'anywhere' }}>
+                        {valor}
+                      </span>
+                    );
+                  }
+
+                  // Textos largos (detalle de baja): etiqueta arriba, valor debajo
+                  if (esTextoLargo) {
+                    return (
+                      <div key={i} style={{ padding: '12px 14px', borderTop: i === 0 ? 'none' : '1px solid #eef2f7', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#94a3b8' }}>{etiqueta}</span>
+                        {contenidoValor}
+                      </div>
+                    );
+                  }
+
+                  // Valores normales: etiqueta a la izquierda, valor a la derecha
+                  return (
+                    <div key={i} style={{ padding: '11px 14px', borderTop: i === 0 ? 'none' : '1px solid #eef2f7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#94a3b8', flexShrink: 0 }}>{etiqueta}</span>
+                      {contenidoValor}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Pie */}
+            <div style={{ padding: '18px 22px 22px' }}>
+              <button
+                type="button"
+                onClick={() => { setModalBajaInfo(false); setDatosBaja(null); }}
+                style={{ width: '100%', backgroundColor: '#0f172a', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: 700, cursor: 'pointer', fontSize: '14px' }}
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚀 MODAL DE ÉXITO (VENTA REGISTRADA) */}
       {showModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div style={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '16px', padding: '28px 24px', width: '340px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
-            <div style={{ width: '54px', height: '54px', borderRadius: '50%', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid #059669', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}><Check size={28} strokeWidth={2.5} /></div>
-            <div><h3 style={{ margin: 0, color: '#ffffff', fontSize: '18px', fontWeight: '700' }}>¡Venta completada!</h3></div>
-            <button type="button" onClick={() => setShowModal(false)} style={{ width: '100%', padding: '10px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}>Aceptar</button>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '16px', padding: '32px', width: '360px', maxWidth: '95vw', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', textAlign: 'center' }}>
+            <CheckCircle2 size={52} color="#10b981" strokeWidth={1.5} />
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>¡Venta registrada!</h3>
+            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>El comprobante fue generado correctamente.</p>
+            <button
+              type="button"
+              onClick={() => setShowModal(false)}
+              style={{ marginTop: '8px', width: '100%', backgroundColor: '#0f172a', color: '#fff', border: 'none', padding: '11px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+            >
+              <Check size={16} /> Aceptar
+            </button>
           </div>
         </div>
       )}

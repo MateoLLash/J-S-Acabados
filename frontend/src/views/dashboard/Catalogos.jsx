@@ -31,11 +31,10 @@ const iconoMetodoPago = (nombre = '') => {
   return Wallet;
 };
 
-// Origen de clientes y proveedores: 'acabados_js' (creados aquí) o 'equipo_kanari' (recibidos del sistema de Lina).
+// Origen de clientes y proveedores: 'acabados_js' (creados aquí) o 'lina' (recibidos del sistema de Lina).
 const ORIGENES = {
   acabados_js: { label: 'Propio', title: 'Registrado en Acabados J&S', bg: '#f1f5f9', color: '#475569', border: '#e2e8f0' },
-  equipo_kanari: { label: 'Kanari', title: 'Recibido del sistema de Lina (equipo Kanari)', bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },
-};
+  lina: { label: 'Lina', title: 'Recibido del sistema de Lina', bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },};
 
 const BadgeOrigen = ({ origen }) => {
   const cfg = ORIGENES[origen] ?? {
@@ -847,8 +846,8 @@ const Catalogos = () => {
   const conteoOrigen = useMemo(() => ({
     todos: clientes.length,
     acabados_js: clientes.filter((c) => c.origen === 'acabados_js').length,
-    equipo_kanari: clientes.filter((c) => c.origen === 'equipo_kanari').length,
-  }), [clientes]);
+    lina: clientes.filter((c) => c.origen === 'lina').length,
+    }), [clientes]);
   const conteoDocumento = useMemo(() => {
     const base = { todos: clientes.length, DNI: 0, RUC: 0, otro: 0, sin: 0 };
     clientes.forEach((c) => { base[claveGrupoDocumento(c.documento)] += 1; });
@@ -882,8 +881,8 @@ const Catalogos = () => {
   const conteoOrigenProveedor = useMemo(() => ({
     todos: proveedores.length,
     acabados_js: proveedores.filter((p) => p.origen === 'acabados_js').length,
-    equipo_kanari: proveedores.filter((p) => p.origen === 'equipo_kanari').length,
-  }), [proveedores]);
+    lina: proveedores.filter((p) => p.origen === 'lina').length,
+    }), [proveedores]);
   const proveedoresFiltrados = useMemo(
     () => proveedores.filter((p) => {
       const coincideTexto = p.nombre.toLowerCase().includes(busqueda.toLowerCase());
@@ -1110,7 +1109,7 @@ const Catalogos = () => {
               {[
                 { id: 'todos', label: 'Todos' },
                 { id: 'acabados_js', label: 'Propios' },
-                { id: 'equipo_kanari', label: 'Kanari' },
+                { id: 'lina', label: 'Lina' },
               ].map(({ id, label }) => {
                 const activo = filtroOrigen === id;
                 return (
@@ -1177,7 +1176,7 @@ const Catalogos = () => {
             {[
               { id: 'todos', label: 'Todos' },
               { id: 'acabados_js', label: 'Propios' },
-              { id: 'equipo_kanari', label: 'Kanari' },
+              { id: 'lina', label: 'Lina' },
             ].map(({ id, label }) => {
               const activo = filtroOrigenProveedor === id;
               return (

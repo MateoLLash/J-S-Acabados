@@ -7,7 +7,7 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
  
 # En producción: variables de entorno en Render, no hardcodeadas.
 CLIENTES_AUTORIZADOS = {
-    os.getenv("EQUIPO_KANARI_API_KEY", "clave-temporal-kanari"): "equipo_kanari",
+    os.getenv("EQUIPO_KANARI_API_KEY", "clave-temporal-kanari"): "lina",
 }
  
  

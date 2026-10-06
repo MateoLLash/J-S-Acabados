@@ -84,4 +84,4 @@ class ClienteWebhookIn(BaseModel):
     documento: str | None = None
     telefono: str | None = None
     email: str | None = None
-    origen: str       
+    origen: str | None = None     

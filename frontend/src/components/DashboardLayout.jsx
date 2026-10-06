@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, Boxes, ShoppingCart, 
   CircleDollarSign, BarChart3, Users, LogOut, 
   AlertTriangle, Clock, DollarSign, BookMarked,
-  Truck, ChevronDown, ChevronRight
+  Truck, ChevronDown, ChevronRight, ShieldCheck
 } from 'lucide-react';
 import { apiFetch } from '../utils/api';
 import NotificacionesBell from './NotificacionesBell';
@@ -169,6 +169,9 @@ const DashboardLayout = () => {
                 </div>
                 <div style={styles.menuItem(isActive('/usuarios'))} onClick={() => navigate('/usuarios')}>
                   <Users size={18} /> Usuarios
+                </div>
+                <div style={styles.menuItem(isActive('/auditoria'))} onClick={() => navigate('/auditoria')}>
+                  <ShieldCheck size={18} /> Auditoría
                 </div>
               </>
             )}

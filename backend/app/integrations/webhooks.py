@@ -1,5 +1,5 @@
 from app.integrations.lina_client import registrar_cliente_en_lina
-import httpx
+
 
 def notificar_cliente_nuevo(cliente) -> None:
     try:
@@ -10,5 +10,6 @@ def notificar_cliente_nuevo(cliente) -> None:
             email=cliente.email,
         )
         print(f"[WEBHOOK] Cliente notificado correctamente a Lina: {resultado}")
-    except httpx.HTTPError as e:
+    except Exception as e:
+        # El detalle (tiempo, estado, error) ya quedó en auditoria_integracion
         print(f"[WEBHOOK] No se pudo notificar a Lina: {e}")

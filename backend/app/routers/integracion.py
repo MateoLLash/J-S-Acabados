@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import text
 
 from app.database import get_db
@@ -79,6 +79,7 @@ def listar_productos_publico(
     '''Endpoint que consume el otro equipo para leer los productos propios de Acabados J&S.'''
     productos = (
         db.query(Producto)
+        .options(joinedload(Producto.categoria), joinedload(Producto.marca))
         .filter(Producto.origen == "acabados_js")
         .order_by(Producto.nombre)
         .all()
@@ -192,7 +193,7 @@ def recibir_cliente_externo(
         documento=payload.documento,
         telefono=payload.telefono,
         email=payload.email,
-        origen=payload.origen,
+        origen="lina",
     )
     db.add(cliente)
 
