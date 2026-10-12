@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -27,11 +28,13 @@ def obtener_o_crear_categoria(db: Session, nombre_categoria: str) -> Categoria:
 
 
 def _auditar_sync(operacion, endpoint, correlacion_id, usuario_id, duracion_ms,
-                  recibidos=None, procesados=None, omitidos=None, error=None):
+                  recibidos=None, procesados=None, omitidos=None, error=None, fecha_inicio=None):
     """Una fila resumen por sincronización: tiempo total de punta a punta y conteo de registros."""
     registrar_evento(
+        fecha=fecha_inicio, fecha_fin=datetime.now(timezone.utc),
         correlacion_id=correlacion_id,
         direccion="interna",
+        alcance_duracion="sincronizacion_completa",
         sistema="lina",
         operacion=operacion,
         metodo="POST",
@@ -44,7 +47,7 @@ def _auditar_sync(operacion, endpoint, correlacion_id, usuario_id, duracion_ms,
         registros_omitidos=omitidos,
         usuario_id=usuario_id,
         error_tipo=type(error).__name__ if error else None,
-        error_mensaje=str(error) if error else None,
+        error_mensaje="Error en sincronización; revisar el tipo y la traza de las llamadas asociadas." if error else None,
     )
 
 
@@ -84,12 +87,12 @@ def sincronizar_proveedores_lina(
             db.rollback()
             _auditar_sync("sync.proveedores", "/api/v1/sync/lina/proveedores", correlacion_id,
                           usuario_actual.id, ms(), len(recibidos), len(ids_guardados),
-                          len(recibidos) - len(ids_guardados), error=exc)
+                          len(recibidos) - len(ids_guardados), error=exc, fecha_inicio=ms.fecha)
             raise
 
         _auditar_sync("sync.proveedores", "/api/v1/sync/lina/proveedores", correlacion_id,
                       usuario_actual.id, ms(), len(recibidos), len(ids_guardados),
-                      len(recibidos) - len(ids_guardados))
+                      len(recibidos) - len(ids_guardados), fecha_inicio=ms.fecha)
 
     return {"proveedores_guardados": len(ids_guardados), "confirmacion_lina": confirmacion}
 
@@ -137,11 +140,11 @@ def sincronizar_productos_lina(
             db.rollback()
             _auditar_sync("sync.productos", "/api/v1/sync/lina/productos", correlacion_id,
                           usuario_actual.id, ms(), len(recibidos), len(ids_guardados),
-                          len(recibidos) - len(ids_guardados), error=exc)
+                          len(recibidos) - len(ids_guardados), error=exc, fecha_inicio=ms.fecha)
             raise
 
         _auditar_sync("sync.productos", "/api/v1/sync/lina/productos", correlacion_id,
                       usuario_actual.id, ms(), len(recibidos), len(ids_guardados),
-                      len(recibidos) - len(ids_guardados))
+                      len(recibidos) - len(ids_guardados), fecha_inicio=ms.fecha)
 
     return {"productos_guardados": len(ids_guardados), "confirmacion_lina": confirmacion}

@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Column, DateTime, Integer, String, Text, func
+from sqlalchemy import BigInteger, Column, DateTime, Integer, Numeric, String, Text, func
 
 from app.database import Base
 
@@ -22,7 +22,7 @@ class AuditoriaIntegracion(Base):
 
     status_code = Column(Integer)
     resultado = Column(String(20), nullable=False)        # exito | error | timeout | no_autorizado | error_cliente | error_servidor
-    duracion_ms = Column(Integer, nullable=False)
+    duracion_ms = Column(Numeric(16, 3), nullable=False)
 
     tam_request_bytes = Column(Integer)
     tam_respuesta_bytes = Column(Integer)
@@ -37,3 +37,12 @@ class AuditoriaIntegracion(Base):
 
     error_tipo = Column(String(100))
     error_mensaje = Column(Text)
+    fecha_fin = Column(DateTime(timezone=True))
+    request_id = Column(String(36), index=True)
+    tiempo_cabeceras_ms = Column(Numeric(16, 3))
+    alcance_duracion = Column(String(60))
+    endpoint_plantilla = Column(String(300))
+    query_params = Column(Text)
+    content_type_request = Column(String(255))
+    content_type_respuesta = Column(String(255))
+    timeout_config_ms = Column(Integer)
