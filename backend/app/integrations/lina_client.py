@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 import httpx
 
+from app.integrations.diagnostico_api import diagnosticar_error
 from app.integrations.auditoria_integracion import registrar_evento, clasificar_status
 
 LINA_BASE_URL = os.getenv("LINA_BASE_URL", "https://api.apilinaservice.lat")
@@ -35,6 +36,7 @@ def _llamar_lina(
     resultado = "exito"
     error_tipo = None
     error_mensaje = None
+    diagnostico = {}
     inicio = time.perf_counter()
 
     try:
@@ -56,13 +58,19 @@ def _llamar_lina(
 
     except httpx.TimeoutException as exc:
         resultado, error_tipo, error_mensaje = "timeout", type(exc).__name__, "Se superó el tiempo de espera configurado."
+        diagnostico = diagnosticar_error(exc)
+        error_mensaje = diagnostico.pop("error_mensaje")
         raise
     except Exception as exc:
         resultado = clasificar_status(status_code) if status_code and status_code >= 400 else "error"
         error_tipo, error_mensaje = type(exc).__name__, "La llamada externa no pudo completarse o devolvió una respuesta no válida."
+        diagnostico = diagnosticar_error(exc)
+        error_mensaje = diagnostico.pop("error_mensaje")
         raise
     finally:
         registrar_evento(
+            **diagnostico,
+            etapa="confirmacion" if operacion == "catalogo.confirmar" else "consulta",
             fecha=fecha, fecha_fin=datetime.now(timezone.utc), request_id=request_id,
             alcance_duracion='cliente_http_y_decodificacion', endpoint_plantilla=ruta,
             content_type_request=content_req, content_type_respuesta=content_resp,

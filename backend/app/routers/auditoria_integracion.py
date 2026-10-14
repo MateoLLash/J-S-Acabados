@@ -1,5 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from uuid import UUID
+import csv
+import io
+
+from fastapi.responses import Response
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
@@ -27,9 +32,21 @@ def filtros_auditoria(
     status_code: Optional[int] = Query(None, ge=100, le=599),
     duracion_min_ms: Optional[float] = Query(None, ge=0, le=1e12),
     q: Optional[str] = Query(None, max_length=200),
+    desde: Optional[datetime] = None,
+    hasta: Optional[datetime] = None,
 ):
-    filtros = ['fecha >= :desde']
-    params = {'desde': datetime.now(timezone.utc) - timedelta(hours=horas)}
+    if (desde is None) != (hasta is None):
+        raise HTTPException(422, 'Indica ambas fechas: desde y hasta.')
+    if desde is not None:
+        if desde.tzinfo is None or hasta.tzinfo is None:
+            raise HTTPException(422, 'Las fechas deben incluir zona horaria.')
+        if hasta <= desde or hasta - desde > timedelta(days=90):
+            raise HTTPException(422, 'El intervalo debe ser positivo y no superar 90 días.')
+    else:
+        hasta = datetime.now(timezone.utc)
+        desde = hasta - timedelta(hours=horas)
+    filtros = ['fecha >= :desde', 'fecha < :hasta']
+    params = {'desde': desde, 'hasta': hasta}
     for campo, valor in (
         ('direccion', direccion), ('sistema', sistema), ('operacion', operacion),
         ('resultado', resultado), ('correlacion_id', correlacion_id),
@@ -66,7 +83,8 @@ def listar_eventos(
 AGREGADOS = """
     COUNT(*) AS total,
     COUNT(*) FILTER (WHERE resultado = 'exito') AS exitosos,
-    COUNT(*) FILTER (WHERE resultado <> 'exito') AS errores,
+    COUNT(*) FILTER (WHERE resultado NOT IN ('exito', 'parcial')) AS errores,
+    COUNT(*) FILTER (WHERE resultado = 'parcial') AS parciales,
     COUNT(*) FILTER (WHERE resultado = 'timeout') AS timeouts,
     ROUND(100.0 * COUNT(*) FILTER (WHERE resultado = 'exito') / NULLIF(COUNT(*), 0), 2) AS pct_exito,
     ROUND(AVG(duracion_ms), 3) AS promedio_ms,
@@ -124,3 +142,44 @@ def metricas_semanal(
         WHERE fecha >= :desde
         GROUP BY semana ORDER BY semana DESC LIMIT :n
     '''), {'desde': datetime.now(timezone.utc) - timedelta(weeks=semanas), 'n': semanas}).mappings().all()
+
+
+@router.get('/traza/{correlacion_id}')
+def obtener_traza(correlacion_id: UUID, db: Session = Depends(get_db), usuario_actual=Depends(get_current_user)):
+    """Ignora filtros de la tabla: reúne los eventos de una correlación específica."""
+    _solo_admin(usuario_actual)
+    filas = db.execute(text("""
+        SELECT * FROM auditoria_integracion WHERE correlacion_id = :correlacion
+        ORDER BY fecha, id LIMIT 501
+    """), {'correlacion': str(correlacion_id)}).mappings().all()
+    if not filas:
+        raise HTTPException(404, 'No hay eventos para esta traza.')
+    return {'correlacion_id': str(correlacion_id), 'eventos': filas[:500], 'truncada': len(filas) > 500}
+
+
+@router.get('/exportar')
+def exportar_eventos(filtros=Depends(filtros_auditoria), db: Session = Depends(get_db), usuario_actual=Depends(get_current_user)):
+    _solo_admin(usuario_actual)
+    where, params, _ = filtros
+    campos = ['id', 'fecha', 'fecha_fin', 'direccion', 'sistema', 'operacion', 'metodo', 'endpoint',
+              'status_code', 'resultado', 'duracion_ms', 'correlacion_id', 'request_id', 'etapa',
+              'estado_guardado', 'estado_confirmacion', 'registros_recibidos', 'registros_procesados',
+              'registros_omitidos', 'registros_fallidos', 'diagnostico_codigo', 'error_mensaje', 'accion_sugerida',
+              'alcance_duracion', 'tiempo_cabeceras_ms', 'timeout_config_ms', 'tam_request_bytes',
+              'tam_respuesta_bytes', 'usuario_id', 'ip_origen', 'user_agent']
+    filas = db.execute(text(f"SELECT {', '.join(campos)} FROM auditoria_integracion WHERE {where} ORDER BY fecha DESC, id DESC LIMIT 50001"), params).mappings().all()
+    if len(filas) > 50000:
+        raise HTTPException(413, 'Más de 50 000 eventos. Reduce el rango de fechas para exportar sin recortes.')
+    archivo = io.StringIO()
+    writer = csv.writer(archivo)
+    writer.writerow(campos)
+    for fila in filas:
+        valores = []
+        for campo in campos:
+            valor = '' if fila[campo] is None else str(fila[campo])
+            if valor.lstrip().startswith(('=', '+', '-', '@')):
+                valor = "'" + valor
+            valores.append(valor)
+        writer.writerow(valores)
+    return Response(content='\ufeff' + archivo.getvalue(), media_type='text/csv; charset=utf-8',
+                    headers={'Content-Disposition': 'attachment; filename="auditoria-filtrada.csv"'})

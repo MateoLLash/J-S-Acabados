@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Column, DateTime, Integer, Numeric, String, Text, func
+from sqlalchemy import BigInteger, Column, DateTime, Integer, Numeric, JSON, String, Text, func
 
 from app.database import Base
 
@@ -46,3 +46,12 @@ class AuditoriaIntegracion(Base):
     content_type_request = Column(String(255))
     content_type_respuesta = Column(String(255))
     timeout_config_ms = Column(Integer)
+
+    registros_fallidos = Column(Integer)
+    etapa = Column(String(40))
+    estado_guardado = Column(String(40))
+    estado_confirmacion = Column(String(40))
+    diagnostico_codigo = Column(String(60))
+    accion_sugerida = Column(Text)
+    detalle_registros = Column(JSON)
+    detalle_total = Column(Integer)
